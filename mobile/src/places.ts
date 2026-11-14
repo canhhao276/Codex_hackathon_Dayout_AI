@@ -68,15 +68,18 @@ const fold = (s: string) =>
     .replace(/[^a-z0-9 ]/g, ' ');
 
 const STOP_WORDS = new Set(['ha', 'noi', 'pho', 'duong', 'quan', 'cua', 'the', 'cafe', 'coffee', 'nha', 'hang', 'tai', 'royal', 'city']);
-function sharesName(a: string, b: string) {
-  const ta = fold(a).split(/\s+/).filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+/** Tên địa điểm khớp tiêu đề ảnh/bài viết? Bỏ các từ trùng với địa chỉ (tên đường, phường) để
+ *  "Starbucks Lê Văn Lương" không khớp nhầm ảnh chụp đường Lê Văn Lương. */
+function sharesName(a: string, b: string, address = '') {
+  const addr = new Set(fold(address).split(/\s+/));
+  const ta = fold(a).split(/\s+/).filter((w) => w.length > 2 && !STOP_WORDS.has(w) && !addr.has(w));
   const tb = new Set(fold(b).split(/\s+/));
   const hit = ta.filter((w) => tb.has(w)).length;
   return ta.length > 0 && hit / ta.length >= 0.5;
 }
 
 /** URL ảnh thumbnail hoặc null. Chỉ nhận ảnh khi tên khớp địa điểm. */
-export async function findPlacePhoto(name: string, lat: number, lng: number): Promise<string | null> {
+export async function findPlacePhoto(name: string, lat: number, lng: number, address = ''): Promise<string | null> {
   const key = `${name}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
   if (photoCache.has(key)) return photoCache.get(key)!;
   let url: string | null = null;
@@ -88,7 +91,7 @@ export async function findPlacePhoto(name: string, lat: number, lng: number): Pr
       WIKI_HEADERS,
     );
     const pages: any[] = Object.values(wiki?.query?.pages ?? {});
-    url = pages.find((p) => p.thumbnail?.source && sharesName(name, p.title))?.thumbnail?.source ?? null;
+    url = pages.find((p) => p.thumbnail?.source && sharesName(name, p.title, address))?.thumbnail?.source ?? null;
     if (!url) {
       const com = await getJson(
         'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch' +
@@ -97,7 +100,7 @@ export async function findPlacePhoto(name: string, lat: number, lng: number): Pr
         WIKI_HEADERS,
       );
       const files: any[] = Object.values(com?.query?.pages ?? {});
-      url = files.find((f) => sharesName(name, f.title ?? ''))?.imageinfo?.[0]?.thumburl ?? null;
+      url = files.find((f) => sharesName(name, f.title ?? '', address))?.imageinfo?.[0]?.thumburl ?? null;
     }
   } catch {
     url = null;

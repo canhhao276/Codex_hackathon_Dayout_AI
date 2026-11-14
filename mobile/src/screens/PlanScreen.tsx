@@ -60,11 +60,11 @@ function StopPhoto({ stop, icon }: { stop: Stop; icon: IconName }) {
       return;
     }
     setUri(null);
-    findPlacePhoto(stop.name, stop.lat, stop.lng).then((u) => alive && setUri(u));
+    findPlacePhoto(stop.name, stop.lat, stop.lng, stop.address).then((u) => alive && setUri(u));
     return () => {
       alive = false;
     };
-  }, [stop.image_url, stop.name, stop.lat, stop.lng]);
+  }, [stop.image_url, stop.name, stop.lat, stop.lng, stop.address]);
   if (uri && !failed) {
     return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" onError={() => setFailed(true)} />;
   }
