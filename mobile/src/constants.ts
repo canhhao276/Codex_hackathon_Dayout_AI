@@ -3,7 +3,9 @@ import type { NutritionGoal, Origin, Vibe } from './types';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
-export const DEFAULT_API_BASE_URL = 'http://localhost:3000';
+// Mặc định trỏ tới máy chủ demo (Cloudflare Tunnel) để BGK cài APK là dùng được ngay.
+// Link tunnel đổi nếu khởi động lại tunnel → sửa ở đây hoặc trong ⚙️ của app.
+export const DEFAULT_API_BASE_URL = 'https://emails-length-workshop-directors.trycloudflare.com';
 
 export const VENUE_ORIGIN: Origin = {
   lat: 21.0012,
