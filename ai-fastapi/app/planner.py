@@ -412,11 +412,15 @@ async def generate(req: GenerateRequest) -> tuple[dict, str]:
     candidates = select_candidates(ctx, ctx.origin_lat, ctx.origin_lng, k=20)
     if len(candidates) < 2:
         raise NoPlacesError("Không tìm thấy đủ địa điểm quanh vị trí này. Hãy thử lại hoặc chọn khu vực khác.")
-    wanted = req.stop_count if req.stop_count and 1 <= req.stop_count <= 8 else n_stops_for(ctx)
+    # Người dùng chọn N → AI được chọn N-1..N+1. Không chọn → AI tự quyết quanh mức theo thời lượng.
+    user_fixed = bool(req.stop_count and 1 <= req.stop_count <= 8)
+    wanted = req.stop_count if user_fixed else n_stops_for(ctx)
+    lo = max(1 if user_fixed else 2, wanted - 1)
+    hi = min(8 if user_fixed else 6, wanted + 1, len(candidates))
     n = min(wanted, len(candidates))
     by_id = {p["id"]: p for p in candidates}
 
-    ai = await llm.choose_stops(ctx, candidates, n, timeout=OPENAI_TIMEOUT_GENERATE)
+    ai = await llm.choose_stops(ctx, candidates, n, timeout=OPENAI_TIMEOUT_GENERATE, lo=lo, hi=hi, user_fixed=user_fixed)
     planned: list[PlannedStop] = []
     engine = "heuristic"
     if ai:
@@ -436,11 +440,11 @@ async def generate(req: GenerateRequest) -> tuple[dict, str]:
                 )
             )
             prev = (poi["lat"], poi["lng"])
-            if len(planned) >= n:
+            if len(planned) >= hi:
                 break
         if planned:
             engine = "openai"
-    if len(planned) < min(3, n):  # top up deterministically if the model under-delivered
+    if len(planned) < min(lo, len(candidates)):  # top up deterministically if the model under-delivered
         picks = heuristic_pick(ctx, candidates, n, chosen=[p.poi for p in planned])
         prev = (ctx.origin_lat, ctx.origin_lng)
         known = {p.poi["id"] for p in planned}

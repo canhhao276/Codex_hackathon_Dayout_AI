@@ -529,7 +529,7 @@ export default function BriefScreen({
           <Row
             icon="git-commit-outline"
             label="Số điểm dừng"
-            value={draft.stopCount ? `${draft.stopCount} điểm` : `Tự động (${Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)))} điểm)`}
+            value={draft.stopCount ? `Khoảng ${draft.stopCount} điểm (AI được ±1)` : 'AI tự quyết theo thời gian & sở thích'}
             right={
               <View style={styles.stepper}>
                 <Pressable
@@ -543,7 +543,7 @@ export default function BriefScreen({
                   <Ionicons name="remove" size={18} color={colors.text} />
                 </Pressable>
                 <Pressable hitSlop={6} onPress={() => update({ stopCount: null })}>
-                  <Text style={styles.stepValue}>{draft.stopCount ?? 'A'}</Text>
+                  <Text style={styles.stepValue}>{draft.stopCount ?? 'AI'}</Text>
                 </Pressable>
                 <Pressable
                   hitSlop={6}

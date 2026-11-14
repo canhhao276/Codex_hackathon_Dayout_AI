@@ -84,7 +84,21 @@ def _stop_schema(ids: list[str]) -> dict:
     }
 
 
-async def choose_stops(ctx: PlanContext, candidates: list[dict], n_stops: int, timeout: float) -> Optional[dict]:
+async def choose_stops(
+    ctx: PlanContext,
+    candidates: list[dict],
+    n_stops: int,
+    timeout: float,
+    lo: Optional[int] = None,
+    hi: Optional[int] = None,
+    user_fixed: bool = False,
+) -> Optional[dict]:
+    lo = lo or n_stops
+    hi = hi or n_stops
+    if user_fixed:
+        count_rule = f"Người dùng muốn khoảng {n_stops} điểm dừng: chọn từ {lo} đến {hi} điểm (ưu tiên {n_stops}, chỉ lệch ±1 khi hợp lý hơn về thời gian/di chuyển)."
+    else:
+        count_rule = f"Bạn TỰ QUYẾT số điểm dừng hợp lý cho khung giờ và nhịp độ (từ {lo} đến {hi} điểm): đi thong thả thì ít điểm, nhiều sở thích thì nhiều điểm hơn."
     ids = [p["id"] for p in candidates]
     schema = {
         "type": "object",
@@ -109,7 +123,7 @@ async def choose_stops(ctx: PlanContext, candidates: list[dict], n_stops: int, t
 Ứng viên (id | tên | loại | khoảng cách từ điểm xuất phát | chi phí | kcal | trong/ngoài trời | tag dinh dưỡng | vibe | món | giờ mở):
 {lines}
 
-Hãy chọn ĐÚNG {n_stops} điểm dừng khác nhau, theo thứ tự đi hợp lý:
+{count_rule} Các điểm phải khác nhau, theo thứ tự đi hợp lý:
 1. TỔNG chi phí/người <= {ctx.budget_pp:,} VNĐ (càng sát ngân sách càng tốt, không vượt).
 2. SỞ THÍCH NGƯỜI DÙNG LÀ ƯU TIÊN SỐ 1: đa số điểm dừng phải khớp vibe đã chọn (được phép 2 điểm cùng loại nếu đúng sở thích, VD nhiều điểm chụp ảnh). Đọc kỹ "Ghi chú" — sở thích thêm ở đó (VD photobooth, xem phim) phải được đáp ứng nếu có ứng viên phù hợp.
 3. Chỉ thêm 1 bữa chính loại "food" khi khung giờ đi qua giờ ăn (11:00–13:30 hoặc 17:30–20:30) hoặc người dùng muốn ăn uống; không nhồi cafe/tráng miệng nếu người dùng không chọn. Tránh món "indulgent" nếu là Eat Clean/Ít đường.

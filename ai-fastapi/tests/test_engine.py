@@ -116,7 +116,7 @@ def test_generate_tolerates_nulls(client):
 
 
 def test_generate_uses_llm_choice(client, monkeypatch):
-    async def fake_choose(ctx, candidates, n, timeout):
+    async def fake_choose(ctx, candidates, n, timeout, **_):
         picks = []
         for cat in ("cafe", "activity", "food"):
             picks.append(next(p for p in candidates if p["category"] == cat))
