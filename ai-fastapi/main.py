@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
 from app import config
+from app.brief import parse_brief
 from app.http import close_client
 from app.models import GenerateRequest, ItineraryResponse, ReplanRequest
 from app.planner import NoPlacesError, generate, replan
@@ -85,6 +86,17 @@ async def ai_replan(body: ReplanRequest, response: Response):
     # "0" = nothing needed changing (e.g. rain but every stop is already indoor).
     response.headers["X-Replan-Changed"] = "0" if engine.startswith("noop") else "1"
     return result
+
+
+@app.post("/ai/parse-brief")
+async def ai_parse_brief(body: dict, response: Response):
+    """Mô tả bằng lời → các field của form Smart Brief (null = người dùng không nhắc tới)."""
+    try:
+        result, engine = await parse_brief(str((body or {}).get("text", "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    response.headers["X-AI-Engine"] = engine
+    return {**result, "engine": engine}
 
 
 @app.get("/ai/pois")

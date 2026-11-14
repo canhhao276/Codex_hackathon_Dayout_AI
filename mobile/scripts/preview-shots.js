@@ -52,6 +52,13 @@ const PORT = 9333;
       await evalJs(`(() => { const t=${JSON.stringify(arg)}; const els=[...document.querySelectorAll('div')].filter(e=>e.innerText&&e.innerText.trim().startsWith(t)); const el=els.sort((a,b)=>a.innerText.length-b.innerText.length)[0]; if(el) el.scrollIntoView({block:'start'}); })()`);
       await new Promise((r) => setTimeout(r, 600));
     }
+    if (kind === 'type') {
+      // type:<chữ đầu placeholder>|<nội dung>  — gõ vào TextInput (react-native-web) như người dùng thật.
+      const [ph, ...v] = arg.split('|');
+      const ok = await evalJs(`(() => { const el=[...document.querySelectorAll('input,textarea')].find(e=>(e.placeholder||'').startsWith(${JSON.stringify(ph)})); if(!el) return false; el.scrollIntoView({block:'center'}); el.focus(); const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el, ${JSON.stringify(v.join('|'))}); el.dispatchEvent(new Event('input',{bubbles:true})); el.blur(); return true; })()`);
+      console.log('type', ph, ok);
+      await new Promise((r) => setTimeout(r, 500));
+    }
     if (kind === 'text') console.log(await evalJs('document.body.innerText.slice(0, 1500)'));
     if (kind === 'shot') {
       const r = await send('Page.captureScreenshot', { format: 'png' });

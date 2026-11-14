@@ -66,6 +66,15 @@ export async function callAiGenerate(aiServiceUrl, payload, { timeoutMs } = {}) 
 }
 
 /**
+ * Forward free-text brief parsing to FastAPI POST /ai/parse-brief
+ * (mobile "Mô tả nhu cầu bằng lời" → pre-filled Smart Brief form).
+ */
+export async function callAiParseBrief(aiServiceUrl, payload, { timeoutMs } = {}) {
+  const base = String(aiServiceUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  return postJson(`${base}/ai/parse-brief`, payload, resolveAiTimeoutMs(timeoutMs));
+}
+
+/**
  * Forward itinerary replan request to FastAPI POST /ai/replan
  * (retaining /ai/replan-stop retry if /ai/replan returns 404).
  */

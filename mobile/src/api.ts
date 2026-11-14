@@ -164,6 +164,43 @@ export async function replanItinerary(
   return { itinerary: normalizeItinerary(raw), aiSource };
 }
 
+/** Kết quả AI phân tích mô tả bằng lời (null = người dùng không nhắc tới). */
+export interface BriefParse {
+  budget_per_person_vnd: number | null;
+  people_count: number | null;
+  vibes: string[];
+  extra_interests: string[];
+  nutrition_goal: string | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  area_key: string | null;
+  note: string;
+  summary: string;
+  engine: string;
+}
+
+export async function parseBrief(baseUrl: string, text: string): Promise<BriefParse> {
+  const { body } = await request<any>(
+    baseUrl,
+    '/api/v1/brief/parse',
+    { method: 'POST', body: JSON.stringify({ text }) },
+    15000,
+  );
+  return {
+    budget_per_person_vnd: typeof body?.budget_per_person_vnd === 'number' ? body.budget_per_person_vnd : null,
+    people_count: typeof body?.people_count === 'number' ? body.people_count : null,
+    vibes: Array.isArray(body?.vibes) ? body.vibes.map(String) : [],
+    extra_interests: Array.isArray(body?.extra_interests) ? body.extra_interests.map(String) : [],
+    nutrition_goal: typeof body?.nutrition_goal === 'string' ? body.nutrition_goal : null,
+    start_time: typeof body?.start_time === 'string' ? body.start_time : null,
+    duration_minutes: typeof body?.duration_minutes === 'number' ? body.duration_minutes : null,
+    area_key: typeof body?.area_key === 'string' ? body.area_key : null,
+    note: typeof body?.note === 'string' ? body.note : '',
+    summary: typeof body?.summary === 'string' ? body.summary : '',
+    engine: typeof body?.engine === 'string' ? body.engine : 'unknown',
+  };
+}
+
 export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; text: string }> {
   const started = Date.now();
   const { body } = await request<any>(baseUrl, '/health', { method: 'GET' }, HEALTH_TIMEOUT_MS);

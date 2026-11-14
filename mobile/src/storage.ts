@@ -14,6 +14,8 @@ export interface BriefDraft {
   /** Sở thích ngoài 5 vibe chuẩn → gửi qua prompt_note. */
   extraVibes: string[];
   durationMin: number;
+  /** Mô tả nhu cầu bằng lời (AI đã phân tích để điền form); gửi kèm prompt_note cho đủ ngữ cảnh. */
+  description: string;
 }
 
 async function readJson<T>(key: string): Promise<T | null> {

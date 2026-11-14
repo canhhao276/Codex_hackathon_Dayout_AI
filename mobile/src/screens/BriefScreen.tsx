@@ -1,9 +1,10 @@
 import * as Location from 'expo-location';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   TextInput,
@@ -11,12 +12,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Chip from '../components/Chip';
+import { parseBrief } from '../api';
 import {
-  BUDGET_BAR_FULL,
-  BUDGET_MAX,
   BUDGET_MIN,
   BUDGET_PRESETS,
-  BUDGET_STEP,
   DURATION_DEFAULT,
   DURATION_MAX,
   DURATION_MIN,
@@ -44,7 +43,11 @@ export const DEFAULT_DRAFT: BriefDraft = {
   note: 'Đi hẹn hò cuối tuần, thích không gian thoáng, ít dầu mỡ',
   extraVibes: [],
   durationMin: DURATION_DEFAULT,
+  description: '',
 };
+
+const DESCRIPTION_EXAMPLE =
+  'VD: Chiều nay 4 đứa bạn đi quanh Hồ Gươm, mỗi người tầm 500k, thích chụp ảnh và ăn đặc sản, có 1 bạn ăn chay';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -66,6 +69,7 @@ export function draftToRequest(d: BriefDraft): GenerateRequest {
     nutrition_goal: d.nutrition as NutritionGoal,
     time_window: resolveTimeWindow(d.startKey, d.durationMin),
     prompt_note: [
+      d.description.trim() ? `Mô tả của người dùng: "${d.description.trim().slice(0, 400)}"` : '',
       d.note.trim(),
       d.extraVibes.length ? `Sở thích thêm: ${d.extraVibes.join(', ')}` : '',
       d.people > 4 ? `Nhóm đông ${d.people} người, cần chỗ rộng` : '',
@@ -90,8 +94,80 @@ export default function BriefScreen({
 
   const update = (patch: Partial<BriefDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const [budgetText, setBudgetText] = useState('');
+  const [budgetText, setBudgetText] = useState(String(Math.round(initialDraft.budget / 1000)));
   const [customVibe, setCustomVibe] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [aiResult, setAiResult] = useState<{ ok: boolean; summary: string; filled: string[] } | null>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+
+  const setBudget = (vnd: number) => {
+    update({ budget: vnd });
+    setBudgetText(String(Math.round(vnd / 1000)));
+  };
+
+  // Mô tả bằng lời → AI phân tích → điền form. Người dùng vẫn sửa mọi field bên dưới trước khi tạo lộ trình.
+  const analyze = async () => {
+    const text = draft.description.trim();
+    if (!text || parsing) return;
+    setParsing(true);
+    setAiResult(null);
+    try {
+      const p = await parseBrief(apiBaseUrl, text);
+      const patch: Partial<BriefDraft> = {};
+      const filled: string[] = [];
+      if (p.budget_per_person_vnd) {
+        patch.budget = Math.max(BUDGET_MIN, p.budget_per_person_vnd);
+        setBudgetText(String(Math.round(patch.budget / 1000)));
+        filled.push(`💰 ${formatVndShort(patch.budget)}/người`);
+      }
+      if (p.people_count) {
+        patch.people = Math.max(1, Math.min(20, p.people_count));
+        filled.push(`👥 ${patch.people} người`);
+      }
+      const coreVibes = p.vibes.filter((v) => VIBE_OPTIONS.some((o) => o.key === v));
+      if (coreVibes.length) {
+        patch.vibes = coreVibes;
+        filled.push(...coreVibes.map((v) => VIBE_OPTIONS.find((o) => o.key === v)!.label));
+      }
+      if (p.extra_interests.length) {
+        patch.extraVibes = Array.from(new Set([...draft.extraVibes, ...p.extra_interests]));
+        filled.push(...p.extra_interests);
+      }
+      const goal = NUTRITION_OPTIONS.find((n) => n.key === p.nutrition_goal);
+      if (goal) {
+        patch.nutrition = goal.key;
+        filled.push(`🥗 ${goal.label}`);
+      }
+      if (p.start_time) {
+        patch.startKey = p.start_time;
+        filled.push(`🕑 ${p.start_time}`);
+      }
+      if (p.duration_minutes) {
+        patch.durationMin = clamp(Math.round(p.duration_minutes / 30) * 30, DURATION_MIN, DURATION_MAX);
+        filled.push(`⏱️ ${formatDuration(patch.durationMin)}`);
+      }
+      const area = QUICK_AREAS.find((a) => a.key === p.area_key);
+      if (area) {
+        patch.originKey = area.key;
+        patch.origin = area.origin;
+        filled.push(`📍 ${area.title}`);
+      }
+      patch.note = p.note;
+      if (p.note) filled.push(`📝 ${p.note}`);
+      update(patch);
+      setAiResult({
+        ok: p.engine === 'openai',
+        summary:
+          p.summary ||
+          (p.engine === 'openai' ? 'AI đã điền form từ mô tả của bạn.' : 'Đã điền nhanh theo từ khoá.'),
+        filled,
+      });
+    } catch (e: any) {
+      setAiResult({ ok: false, summary: `Chưa phân tích được: ${e?.message ?? 'lỗi kết nối'}`, filled: [] });
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const toggleVibe = (v: Vibe) =>
     setDraft((d) => {
@@ -113,11 +189,15 @@ export default function BriefScreen({
     setCustomVibe('');
   };
 
-  // Ô nhập ngân sách tự do, tính theo nghìn đồng (VD gõ 450 → 450k).
-  const applyBudgetText = () => {
-    const k = parseInt(budgetText.replace(/\D/g, ''), 10);
-    if (Number.isFinite(k) && k > 0) update({ budget: clamp(k * 1000, BUDGET_MIN, BUDGET_MAX) });
-    setBudgetText('');
+  // Ngân sách nhập thẳng theo nghìn đồng (VD gõ 450 → 450k), không giới hạn tối đa.
+  const onBudgetChange = (t: string) => {
+    const digits = t.replace(/\D/g, '').slice(0, 7);
+    setBudgetText(digits);
+    const k = parseInt(digits, 10);
+    if (Number.isFinite(k) && k > 0) update({ budget: k * 1000 });
+  };
+  const onBudgetBlur = () => {
+    if (draft.budget < BUDGET_MIN || !budgetText) setBudget(Math.max(BUDGET_MIN, draft.budget));
   };
 
   const shiftStart = (delta: number) =>
@@ -192,9 +272,67 @@ export default function BriefScreen({
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: 120 + insets.bottom }}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Mô tả bằng lời → AI điền form */}
+        <View style={[styles.card, styles.aiCard]}>
+          <Text style={styles.cardTitle}>💬 Kể nhu cầu, AI điền giúp</Text>
+          <TextInput
+            value={draft.description}
+            onChangeText={(t) => update({ description: t.slice(0, 600) })}
+            placeholder={DESCRIPTION_EXAMPLE}
+            placeholderTextColor={colors.textMuted}
+            style={styles.note}
+            multiline
+          />
+          <View style={styles.inlineRow}>
+            <Pressable
+              style={[styles.aiBtn, (!draft.description.trim() || parsing) && { opacity: 0.5 }]}
+              onPress={analyze}
+              disabled={!draft.description.trim() || parsing}
+            >
+              {parsing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.aiBtnText}>✨ AI phân tích & điền form</Text>
+              )}
+            </Pressable>
+            {!!draft.description && !parsing && (
+              <Pressable
+                style={styles.clearBtn}
+                onPress={() => {
+                  update({ description: '' });
+                  setAiResult(null);
+                }}
+              >
+                <Text style={styles.clearBtnText}>Xoá</Text>
+              </Pressable>
+            )}
+          </View>
+          {aiResult && (
+            <View style={[styles.aiResult, !aiResult.ok && styles.aiResultWarn]}>
+              <Text style={styles.aiResultTitle}>
+                {aiResult.ok ? '🤖 ' : '⚠️ '}
+                {aiResult.summary}
+              </Text>
+              {aiResult.filled.length > 0 && (
+                <>
+                  <View style={styles.filledWrap}>
+                    {aiResult.filled.map((f) => (
+                      <View key={f} style={styles.filledTag}>
+                        <Text style={styles.filledText}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={styles.hint}>Đã điền vào form bên dưới — bạn sửa thoải mái rồi bấm tạo lộ trình.</Text>
+                </>
+              )}
+            </View>
+          )}
+        </View>
+
         {/* Điểm xuất phát */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📍 Điểm xuất phát</Text>
@@ -227,32 +365,25 @@ export default function BriefScreen({
 
         {/* Ngân sách & số người */}
         <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>💰 Ngân sách / người</Text>
-            <Text style={styles.bigValue}>{budgetLabel}</Text>
+          <Text style={styles.cardTitle}>💰 Ngân sách / người</Text>
+          <View style={styles.budgetBox}>
+            <TextInput
+              value={budgetText}
+              onChangeText={onBudgetChange}
+              onBlur={onBudgetBlur}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              placeholder="350"
+              placeholderTextColor={colors.textMuted}
+              style={styles.budgetInput}
+              selectTextOnFocus
+            />
+            <Text style={styles.budgetUnit}>nghìn đồng</Text>
           </View>
-          <View style={styles.stepper}>
-            <Pressable
-              style={styles.stepBtn}
-              onPress={() => update({ budget: Math.max(BUDGET_MIN, draft.budget - BUDGET_STEP) })}
-            >
-              <Text style={styles.stepText}>−</Text>
-            </Pressable>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.trackFill,
-                  { width: `${Math.min(1, (draft.budget - BUDGET_MIN) / (BUDGET_BAR_FULL - BUDGET_MIN)) * 100}%` },
-                ]}
-              />
-            </View>
-            <Pressable
-              style={styles.stepBtn}
-              onPress={() => update({ budget: Math.min(BUDGET_MAX, draft.budget + BUDGET_STEP) })}
-            >
-              <Text style={styles.stepText}>+</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.hint}>
+            = {draft.budget.toLocaleString('vi-VN')} VNĐ/người{draft.budget >= 1000000 ? ` (${budgetLabel})` : ''} • Gõ số tuỳ ý,
+            hoặc chọn nhanh:
+          </Text>
           <View style={styles.chips}>
             {BUDGET_PRESETS.map((b) => (
               <Chip
@@ -261,24 +392,9 @@ export default function BriefScreen({
                 tone="accent"
                 label={formatVndShort(b)}
                 selected={draft.budget === b}
-                onPress={() => update({ budget: b })}
+                onPress={() => setBudget(b)}
               />
             ))}
-          </View>
-          <View style={styles.inlineRow}>
-            <TextInput
-              value={budgetText}
-              onChangeText={setBudgetText}
-              onSubmitEditing={applyBudgetText}
-              onBlur={applyBudgetText}
-              keyboardType="number-pad"
-              returnKeyType="done"
-              placeholder="Nhập số khác (nghìn đồng), VD 450"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.inlineInput, { flex: 1 }]}
-              maxLength={5}
-            />
-            <Text style={styles.inlineSuffix}>k</Text>
           </View>
 
           <View style={[styles.rowBetween, { marginTop: 10 }]}>
@@ -531,6 +647,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  aiCard: { borderWidth: 2, borderColor: colors.primarySoft },
+  aiBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  aiBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  clearBtn: {
+    marginLeft: 8,
+    marginTop: 6,
+    height: 46,
+    paddingHorizontal: 16,
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearBtnText: { color: colors.textMuted, fontWeight: '800', fontSize: 14 },
+  aiResult: { marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.primarySoft },
+  aiResultWarn: { backgroundColor: '#FEF3C7' },
+  aiResultTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 6 },
+  filledWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  filledTag: {
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  filledText: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
+  budgetBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    backgroundColor: colors.accentSoft,
+    marginBottom: 6,
+  },
+  budgetInput: {
+    flex: 1,
+    minWidth: 0,
+    width: 0,
+    fontSize: 26,
+    fontWeight: '900',
+    color: colors.accent,
+    paddingVertical: 8,
+  },
+  budgetUnit: { fontSize: 15, fontWeight: '800', color: colors.accent, marginLeft: 8, flexShrink: 0 },
   note: {
     minHeight: 64,
     borderWidth: 1.5,

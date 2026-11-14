@@ -13,7 +13,7 @@ import {
   getDemoItinerary,
   replanFallbackItinerary,
 } from './fallbackPlanner.js';
-import { callAiGenerate, callAiReplan, checkAiHealth } from './aiClient.js';
+import { callAiGenerate, callAiParseBrief, callAiReplan, checkAiHealth } from './aiClient.js';
 import { renderNotFoundSharePage, renderSharePage } from './views/sharePage.js';
 import { renderStatsDashboard } from './views/statsPage.js';
 
@@ -455,6 +455,25 @@ export function createApp(options = {}) {
           baseUrl,
         }),
       );
+    }),
+  );
+
+  // Mobile: người dùng gõ nhu cầu bằng lời → FastAPI phân tích → app điền sẵn form (người dùng vẫn sửa được).
+  app.post(
+    '/api/v1/brief/parse',
+    asyncHandler(async (req, res) => {
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 1000) : '';
+      if (!text) return res.status(400).json({ error: 'Thiếu nội dung mô tả (text).' });
+      try {
+        const parsed = await callAiParseBrief(aiServiceUrl, { text });
+        res.setHeader('X-AI-Source', parsed?.engine === 'openai' ? 'fastapi' : 'fallback');
+        return res.status(200).json(parsed);
+      } catch (err) {
+        return res.status(502).json({
+          error: 'AI service unavailable',
+          detail: err?.message || 'Upstream FastAPI error',
+        });
+      }
     }),
   );
 
