@@ -4,14 +4,14 @@ Phần của **Người 3** (nhánh `feat/ai-fastapi`). Nhận yêu cầu từ N
 
 ```
 Request ─► lọc Haversine ~20 quán thật quanh origin (data/hanoi_pois.json, ngoài Hà Nội → OSM Overpass)
-        ─► OpenAI Structured Outputs (gpt-4o-mini) chọn 3–4 điểm theo id + viết ai_reason
+        ─► OpenAI Structured Outputs (gpt-4o) chọn 3–4 điểm theo id + viết ai_reason
         ─► sửa ngân sách (đổi quán rẻ hơn nếu lố) ─► sắp thứ tự tối ưu (thử mọi hoán vị, phạt giờ ăn/giờ mở cửa)
         ─► OSRM free routing (timeout tự co theo deadline, sập thì nối thẳng × 1.25) ─► xếp giờ ─► JSON
 ```
 
 - AI chỉ được chọn id có trong danh sách ứng viên (JSON-schema `enum`), nên **không bịa ra quán**. Giá, kcal và tọa độ lấy từ dữ liệu; quãng đường lấy từ OSRM.
 - Không có key OpenAI, hoặc OpenAI quá chậm? Hệ thống tự chuyển sang thuật toán chấm điểm dự phòng nên **không bao giờ trả lỗi**. Header `X-AI-Engine` cho biết engine nào đã chạy, VD `openai+osrm` hoặc `heuristic+fallback`.
-- Thời gian đo trên máy dev: `/ai/generate` ~0.8s chưa tính LLM (cộng gpt-4o-mini ≈ 2–3s → **< 5s**), `/ai/replan` ~0.3s chưa tính LLM (**< 3.5s**).
+- Thời gian đo với OpenAI thật (14/11, Wi-Fi hội trường): mỗi lần gọi gpt-4o ~2.3s (gpt-4o-mini 3–5s) → `/ai/generate` ~3s, `/ai/replan` ~2.5s. Server tự "làm nóng" OpenAI khi khởi động nên lần bấm đầu tiên cũng nhanh.
 
 ## Chạy nhanh
 

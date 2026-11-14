@@ -4,6 +4,7 @@ Run:  uvicorn main:app --host 0.0.0.0 --port 8000
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -12,15 +13,38 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from app import config
+from app import config, llm
 from app.brief import parse_brief
 from app.http import close_client
 from app.models import GenerateRequest, ItineraryResponse, ReplanRequest
 from app.planner import NoPlacesError, generate, replan
-from app.pois import load_pois
+from app.pois import PlanContext, load_pois, select_candidates
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("dayout")
+
+
+async def _warmup_openai() -> None:
+    """Hit every structured-output schema once at startup.
+
+    OpenAI pre-processes a strict schema the first time it sees it (+2-3s) and the first
+    request also pays the TLS handshake, so without this the very first tap on stage is slow.
+    """
+    if not config.openai_enabled():
+        return
+    t0 = time.perf_counter()
+    try:
+        ctx = PlanContext(21.0012, 105.8035, "warm-up", 350000, 2, ["chill_cafe"], "balanced", 840, 1260)
+        cands = select_candidates(ctx, ctx.origin_lat, ctx.origin_lng, k=6)
+        await asyncio.gather(
+            llm.choose_stops(ctx, cands, 3, timeout=15),
+            llm.choose_replacements(ctx, "crowded", [], [{"order": 1, "old": cands[0], "candidates": cands[1:4]}], timeout=15),
+            parse_brief("2 người đi cafe chiều nay"),
+            return_exceptions=True,
+        )
+        log.info("OpenAI warm-up done in %.1fs", time.perf_counter() - t0)
+    except Exception as exc:  # never block startup
+        log.warning("OpenAI warm-up skipped: %s", exc)
 
 
 @asynccontextmanager
@@ -30,7 +54,9 @@ async def lifespan(_: FastAPI):
         "Dayout AI engine ready: %d POIs, OpenAI=%s (model %s)",
         len(pois), "ON" if config.openai_enabled() else "OFF (heuristic fallback)", config.OPENAI_MODEL,
     )
+    warm = asyncio.create_task(_warmup_openai())
     yield
+    warm.cancel()
     await close_client()
 
 

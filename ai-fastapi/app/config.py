@@ -20,7 +20,7 @@ def _float(name: str, default: float) -> float:
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o").strip() or "gpt-4o"
 OPENAI_TIMEOUT_GENERATE = _float("OPENAI_TIMEOUT_GENERATE", 6.0)
 OPENAI_TIMEOUT_REPLAN = _float("OPENAI_TIMEOUT_REPLAN", 4.5)
 

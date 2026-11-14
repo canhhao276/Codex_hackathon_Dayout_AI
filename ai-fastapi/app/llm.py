@@ -116,9 +116,10 @@ Hãy chọn ĐÚNG {n_stops} điểm dừng khác nhau, theo thứ tự đi hợ
 2. Có ít nhất 1 điểm loại "food" làm bữa chính; tránh 2 điểm cùng loại liền nhau.
 3. Ưu tiên khớp vibe & chế độ dinh dưỡng; tránh món "indulgent" nếu là Eat Clean/Ít đường.
 4. Các điểm gần nhau, không đi vòng; quán phải đang mở trong khung giờ. Đa dạng trải nghiệm: không quá 2 điểm trong cùng 1 tòa nhà/TTTM; nếu có vibe chụp ảnh hãy cân nhắc 1 điểm ngoài trời đẹp.
-5. recommended_items: 1-2 món/hoạt động lấy từ cột "món" của chính địa điểm đó (có thể thêm "ít đường", "thêm rau").
-6. ai_reason: tối đa 18 từ, nêu lý do cụ thể (vibe, khoảng cách, giá, dinh dưỡng).
-7. nutrition_note: tối đa 10 từ. title: tối đa 8 từ, hấp dẫn. nutrition_highlight: tối đa 6 từ (VD "Giàu đạm, ít đường")."""
+5. recommended_items: 1-2 món ngắn lấy từ cột "món" của chính địa điểm đó.
+6. ai_reason: tối đa 12 từ, lý do cụ thể (vibe, khoảng cách, giá hoặc dinh dưỡng).
+7. nutrition_note: tối đa 6 từ. title: tối đa 6 từ, hấp dẫn. nutrition_highlight: tối đa 5 từ (VD "Giàu đạm, ít đường").
+Trả lời ngắn gọn, không giải thích thêm."""
     return await _structured_call(SYSTEM_PLANNER, user, schema, "dayout_plan", timeout)
 
 
@@ -184,6 +185,6 @@ Ngân sách: {ctx.budget_pp:,} VNĐ/người. Chế độ dinh dưỡng: {GOAL_L
 
 Với MỖI điểm cần thay, chọn đúng 1 địa điểm thay thế từ danh sách ứng viên CỦA ĐIỂM ĐÓ (target_order = số thứ tự điểm cần thay).
 Ưu tiên gần lộ trình, khớp lý do đổi và chế độ dinh dưỡng; tổng chi phí sau khi đổi không vượt ngân sách.
-Không chọn 2 quán cùng thương hiệu (VD 2 Starbucks) và tránh 2 điểm cùng loại đứng liền nhau; nếu điểm cũ là hoạt động thì ưu tiên hoạt động thay thế. ai_reason tối đa 18 từ, nhắc rõ lý do đổi (VD "Trong nhà tránh mưa, cách 600m").
-recommended_items 1-2 món từ cột "món". nutrition_note tối đa 10 từ. nutrition_highlight tối đa 6 từ cho cả lịch trình mới."""
+Không chọn 2 quán cùng thương hiệu (VD 2 Starbucks) và tránh 2 điểm cùng loại đứng liền nhau; nếu điểm cũ là hoạt động thì ưu tiên hoạt động thay thế. ai_reason tối đa 12 từ, nhắc rõ lý do đổi (VD "Trong nhà tránh mưa, cách 600m").
+recommended_items 1-2 món ngắn từ cột "món". nutrition_note tối đa 6 từ. nutrition_highlight tối đa 5 từ cho cả lịch trình mới."""
     return await _structured_call(SYSTEM_PLANNER, user, schema, "dayout_replan", timeout)
