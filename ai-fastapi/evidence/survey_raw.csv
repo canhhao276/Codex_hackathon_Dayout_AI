@@ -1,9 +1,9 @@
-id,gioi_tinh,truong,q1_phut,q2_so_app,q3_met_nhat,q4_muon_thu,ghi_chu
-1,Nam,UET,25,4,E,4,"Nhóm 5 đứa chat 2 tiếng vẫn chưa chốt được chỗ"
-2,Nữ,UET,40,3,A,5,"Mỗi lần đi chơi lại ngồi lướt TikTok 30p tìm quán"
-3,Nam,UET,15,2,C,3,"Toàn bị lố tiền vì không tính trước"
-4,Nữ,UET,60,5,E,5,"Mệt nhất là ai cũng ok nhưng không ai chốt giờ"
-5,Nam,UET,10,3,B,2,"Hay bị kẹt đường vòng, lười tính lộ trình"
-6,Nữ,UET,30,4,A,4,"Không biết đi đâu mới lạ, toàn quán cũ"
-7,Nam,UEB,45,3,D,3,"Muốn ăn healthy nhưng nhóm toàn chọn đồ ăn nhanh"
-8,Nữ,UET,20,2,E,5,"Sẵn sàng thử app nếu giúp chốt kèo nhanh hơn"
+id,gioi_tinh,truong,q1_phut,q2_so_app,q3_met_nhat,q4_muon_thu,da_gui_link,da_tham_gia,da_cai_apk,ghi_chu
+1,Nam,UET,25,4,E,4,1,0,0,"Nhóm 5 đứa chat 2 tiếng vẫn chưa chốt được chỗ"
+2,Nữ,UET,40,3,A,5,1,1,1,"Mỗi lần đi chơi lại ngồi lướt TikTok 30p tìm quán"
+3,Nam,UET,15,2,C,3,0,0,0,"Toàn bị lố tiền vì không tính trước"
+4,Nữ,UET,60,5,E,5,1,1,1,"Mệt nhất là ai cũng ok nhưng không ai chốt giờ"
+5,Nam,UET,10,3,B,2,0,0,0,"Hay bị kẹt đường vòng, lười tính lộ trình"
+6,Nữ,UET,30,4,A,4,1,0,0,"Không biết đi đâu mới lạ, toàn quán cũ"
+7,Nam,UEB,45,3,D,3,0,0,0,"Muốn ăn healthy nhưng nhóm toàn chọn đồ ăn nhanh"
+8,Nữ,UET,20,2,E,5,1,1,0,"Sẵn sàng thử app nếu giúp chốt kèo nhanh hơn"

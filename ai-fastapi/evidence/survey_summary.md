@@ -22,3 +22,15 @@
 ## Câu chốt cho pitch
 
 > Khảo sát 8 bạn trẻ ngay tại hội trường hôm nay: trung bình mất 31 phút và 3.2 app để chốt 1 buổi đi chơi; 38% nói nỗi đau lớn nhất là "cả nhóm bàn mãi không chốt được kèo".
+
+
+## Người dùng thực tế trong ngày (Tiêu chí 3)
+
+Ghi nhận trên server Dayout thứ hai của đội (chạy ở máy một thành viên khác), xem tại trang `/admin/stats` của server đó.
+
+- Muốn dùng thử (4–5/5): **5/8**
+- Đã nhận link "Gửi kèo cho nhóm": **5/8**
+- Đã mở link và bấm **tham gia kèo**: **3/8** (60% số người nhận link)
+- Đã **cài APK** và tự tạo lộ trình: **2/8**
+
+> Câu chốt: "Ngay chiều nay, 5 bạn nhận link chốt kèo, 3 bạn đã bấm tham gia và 2 bạn đã cài app trên điện thoại của mình."
