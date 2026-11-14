@@ -78,4 +78,6 @@ export interface SavedPlan {
   request: GenerateRequest;
   saved_at: string;
   is_sample: boolean;
+  /** Header X-AI-Source của backend-node: 'fastapi' (AI thật) | 'fallback' (dự phòng, không AI). */
+  ai_source?: string | null;
 }

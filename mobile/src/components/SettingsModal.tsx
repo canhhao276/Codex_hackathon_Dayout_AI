@@ -40,7 +40,7 @@ export default function SettingsModal({ visible, apiBaseUrl, onClose, onSave }: 
     setChecking(true);
     setStatus(null);
     try {
-      setStatus({ ok: true, text: await checkHealth(url) });
+      setStatus(await checkHealth(url));
     } catch (e: any) {
       setStatus({ ok: false, text: e?.message ?? 'Lỗi kết nối' });
     } finally {

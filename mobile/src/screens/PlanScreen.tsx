@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   type ScrollViewInstance,
@@ -76,7 +77,14 @@ export default function PlanScreen({
 
   const rain = () => {
     const outdoor = stops.find((s) => !s.indoor);
-    onReplan('rainy_weather', (outdoor ?? stops[0]).order, budget);
+    if (outdoor) {
+      onReplan('rainy_weather', outdoor.order, budget);
+      return;
+    }
+    Alert.alert('☔ Lộ trình đã an toàn khi mưa', 'Tất cả các chặng hiện đều trong nhà. Vẫn muốn AI đổi một chặng?', [
+      { text: 'Thôi', style: 'cancel' },
+      { text: 'Đổi chặng 1', onPress: () => onReplan('rainy_weather', stops[0].order, budget) },
+    ]);
   };
   const cheaper = () => {
     const priciest = [...stops].sort((a, b) => b.estimated_cost_vnd - a.estimated_cost_vnd)[0];
@@ -96,7 +104,8 @@ export default function PlanScreen({
             {summary.title}
           </Text>
           <Text style={styles.sub} numberOfLines={1}>
-            {restored ? '💾 Đã khôi phục lịch trình gần nhất • ' : ''}
+            {restored ? '💾 Đã khôi phục • ' : ''}
+            {plan.ai_source === 'fastapi' ? '🤖 AI live • ' : ''}
             {request.people_count} người • {request.time_window.start}–{request.time_window.end}
           </Text>
         </View>
@@ -112,6 +121,13 @@ export default function PlanScreen({
         <View style={styles.sampleBanner}>
           <Text style={styles.sampleText}>
             ⚠️ DỮ LIỆU MẪU (server chưa kết nối) — bấm ⚙️ để nhập API URL rồi Tạo mới.
+          </Text>
+        </View>
+      )}
+      {!is_sample && plan.ai_source === 'fallback' && (
+        <View style={[styles.sampleBanner, { backgroundColor: colors.dangerSoft }]}>
+          <Text style={[styles.sampleText, { color: colors.danger }]}>
+            ⚠️ AI (FastAPI) đang offline — lịch trình này do planner dự phòng tạo. Bật lại AI rồi Tạo mới.
           </Text>
         </View>
       )}
@@ -316,7 +332,7 @@ const styles = StyleSheet.create({
   fitBtn: {
     position: 'absolute',
     left: 10,
-    bottom: 10,
+    bottom: 28,
     backgroundColor: 'rgba(255,255,255,0.95)',
     paddingHorizontal: 10,
     paddingVertical: 6,

@@ -32,6 +32,9 @@ const MAP_HTML = `<!DOCTYPE html>
             border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(2,132,199,.25); box-sizing: border-box; }
   .leaflet-popup-content { font: 13px -apple-system, Roboto, sans-serif; margin: 10px 12px; }
   .leaflet-popup-content b { font-size: 14px; }
+  /* Thẻ HUD bên app đè ~18px lên đáy bản đồ */
+  .leaflet-bottom { bottom: 18px; }
+  .leaflet-control-attribution { font-size: 9px; }
   #err { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
          font: 14px sans-serif; color: #475569; text-align: center; padding: 20px; }
 </style>
@@ -60,22 +63,24 @@ const MAP_HTML = `<!DOCTYPE html>
       return;
     }
     map = L.map('map', { zoomControl: false, attributionControl: true }).setView([21.0012, 105.8035], 14);
-    var carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO'
+    // CartoDB nay trả ảnh "API KEY REQUIRED" (HTTP 200) nên không dùng được.
+    // Chính: OSM. Dự phòng khi OSM lỗi/chặn: Esri World Street Map (không cần key).
+    var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
     });
     var errors = 0, switched = false;
-    carto.on('tileerror', function () {
+    osm.on('tileerror', function () {
       errors++;
-      if (errors > 4 && !switched) {
+      if (errors > 3 && !switched) {
         switched = true;
-        map.removeLayer(carto);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19, attribution: '&copy; OpenStreetMap'
+        map.removeLayer(osm);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19, attribution: '&copy; Esri, OpenStreetMap'
         }).addTo(map);
       }
     });
-    carto.addTo(map);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    osm.addTo(map);
+    L.control.zoom({ position: 'topright' }).addTo(map);
     layer = L.layerGroup().addTo(map);
     window.__ready = true;
     post({ type: 'ready' });
@@ -134,7 +139,9 @@ const MAP_HTML = `<!DOCTYPE html>
 
   function fit() {
     map.closePopup();
-    if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16, animate: true });
+    if (bounds && bounds.isValid()) {
+      map.fitBounds(bounds, { paddingTopLeft: [36, 36], paddingBottomRight: [36, 56], maxZoom: 16, animate: true });
+    }
   }
 
   function focus(order) {

@@ -22,7 +22,7 @@ async function request<T>(
   path: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<T> {
+): Promise<{ body: T; aiSource: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
@@ -61,7 +61,7 @@ async function request<T>(
     );
   }
   if (body == null) throw new ApiError('Server trả về dữ liệu không phải JSON.');
-  return body as T;
+  return { body: body as T, aiSource: res.headers.get('x-ai-source') };
 }
 
 const num = (v: any, fallback = 0): number => {
@@ -131,38 +131,49 @@ export function normalizeItinerary(raw: any): ItineraryResponse {
   };
 }
 
+/** Kết quả kèm nguồn sinh lịch trình: header `X-AI-Source` của backend-node ('fastapi' | 'fallback'). */
+export interface ItineraryResult {
+  itinerary: ItineraryResponse;
+  aiSource: string | null;
+}
+
 export async function generateItinerary(
   baseUrl: string,
   body: GenerateRequest,
-): Promise<ItineraryResponse> {
-  const raw = await request<any>(
+): Promise<ItineraryResult> {
+  const { body: raw, aiSource } = await request<any>(
     baseUrl,
     '/api/v1/itineraries/generate',
     { method: 'POST', body: JSON.stringify(body) },
     GENERATE_TIMEOUT_MS,
   );
-  return normalizeItinerary(raw);
+  return { itinerary: normalizeItinerary(raw), aiSource };
 }
 
 export async function replanItinerary(
   baseUrl: string,
   body: ReplanRequest,
-): Promise<ItineraryResponse> {
-  const raw = await request<any>(
+): Promise<ItineraryResult> {
+  const { body: raw, aiSource } = await request<any>(
     baseUrl,
     '/api/v1/itineraries/replan',
     { method: 'POST', body: JSON.stringify(body) },
     REPLAN_TIMEOUT_MS,
   );
-  return normalizeItinerary(raw);
+  return { itinerary: normalizeItinerary(raw), aiSource };
 }
 
-export async function checkHealth(baseUrl: string): Promise<string> {
+export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; text: string }> {
   const started = Date.now();
-  const body = await request<any>(baseUrl, '/health', { method: 'GET' }, HEALTH_TIMEOUT_MS);
+  const { body } = await request<any>(baseUrl, '/health', { method: 'GET' }, HEALTH_TIMEOUT_MS);
   const ms = Date.now() - started;
-  const ai = body?.ai ?? body?.fastapi ?? body?.ai_service;
-  const aiText =
-    ai == null ? '' : typeof ai === 'object' ? ` • AI: ${ai.status ?? ai.ok ?? JSON.stringify(ai)}` : ` • AI: ${ai}`;
-  return `OK (${ms}ms)${aiText}`;
+  const ai = body?.ai_service ?? body?.ai ?? body?.fastapi;
+  if (ai == null) return { ok: true, text: `Server OK (${ms}ms)` };
+  const online =
+    typeof ai === 'object' ? ai.online ?? ai.ok ?? ai.status === 'ok' : ai === true || ai === 'ok';
+  if (online) {
+    const lat = typeof ai === 'object' && ai.latency_ms != null ? `, ${ai.latency_ms}ms` : '';
+    return { ok: true, text: `Server OK (${ms}ms) • AI FastAPI online${lat}` };
+  }
+  return { ok: false, text: `Server OK (${ms}ms) nhưng AI FastAPI OFFLINE → lịch trình sẽ là dự phòng, không phải AI!` };
 }

@@ -119,8 +119,14 @@ export default function App() {
       storage.saveBrief(nextDraft);
       setLoading({ title: '✨ AI đang lên lộ trình', steps: GENERATE_STEPS });
       try {
-        const itin = await generateItinerary(apiBaseUrl, req);
-        await commitPlan({ itinerary: itin, request: req, saved_at: new Date().toISOString(), is_sample: false });
+        const { itinerary: itin, aiSource } = await generateItinerary(apiBaseUrl, req);
+        await commitPlan({
+          itinerary: itin,
+          request: req,
+          saved_at: new Date().toISOString(),
+          is_sample: false,
+          ai_source: aiSource,
+        });
         setChangedStopIds([]);
         setPrevSummary(null);
         setRestored(false);
@@ -148,16 +154,19 @@ export default function App() {
       const old = plan.itinerary;
       try {
         let next: ItineraryResponse;
+        let aiSource = plan.ai_source ?? null;
         if (plan.is_sample) {
           await new Promise((r) => setTimeout(r, 900));
           next = sampleReplan(old, plan.request.origin, targetOrder, reason, newBudget);
         } else {
-          next = await replanItinerary(apiBaseUrl, {
+          const res = await replanItinerary(apiBaseUrl, {
             current_itinerary: old,
             target_stop_order: targetOrder,
             reason,
             new_budget_vnd: newBudget,
           });
+          next = res.itinerary;
+          aiSource = res.aiSource;
         }
         if (!next.share_url) next = { ...next, share_url: old.share_url };
         if (!next.summary.budget_per_person_vnd) {
@@ -173,6 +182,7 @@ export default function App() {
           itinerary: next,
           request: { ...plan.request, budget_vnd: newBudget },
           saved_at: new Date().toISOString(),
+          ai_source: aiSource,
         });
       } catch (e: any) {
         setLoading(null);
