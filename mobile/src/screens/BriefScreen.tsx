@@ -536,8 +536,8 @@ export default function BriefScreen({
                   hitSlop={6}
                   style={styles.stepBtn}
                   onPress={() => {
-                    const cur = draft.stopCount ?? Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)));
-                    update({ stopCount: Math.max(1, cur - 1) });
+                    // Chuỗi: AI ← 1 ← 2 … ← 8 (giảm từ 1 là quay về AI tự quyết).
+                    update({ stopCount: !draft.stopCount || draft.stopCount <= 1 ? null : draft.stopCount - 1 });
                   }}
                 >
                   <Ionicons name="remove" size={18} color={colors.text} />
@@ -549,8 +549,8 @@ export default function BriefScreen({
                   hitSlop={6}
                   style={styles.stepBtn}
                   onPress={() => {
-                    const cur = draft.stopCount ?? Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)));
-                    update({ stopCount: Math.min(8, cur + 1) });
+                    // Chuỗi: AI → 1 → 2 … → 8.
+                    update({ stopCount: draft.stopCount ? Math.min(8, draft.stopCount + 1) : 1 });
                   }}
                 >
                   <Ionicons name="add" size={18} color={colors.text} />
