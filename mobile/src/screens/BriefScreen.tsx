@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -56,6 +56,7 @@ export const DEFAULT_DRAFT: BriefDraft = {
   durationMin: DURATION_DEFAULT,
   description: '',
   destination: null,
+  stopCount: null,
 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -69,14 +70,21 @@ interface Props {
   onBackToPlan: () => void;
   onOpenSettings: () => void;
   onGenerate: (req: GenerateRequest, draft: BriefDraft) => void;
+  /** Lưu form mỗi khi người dùng sửa (không mất thay đổi khi chuyển màn). */
+  onDraftChange?: (draft: BriefDraft) => void;
 }
 
 export function draftToRequest(d: BriefDraft): GenerateRequest {
+  // Photobooth là một kiểu "chụp ảnh" → bật vibe photo_spot để backend chấm điểm đúng loại địa điểm.
+  const vibes = (d.extraVibes.some((v) => /photo ?booth/i.test(v)) && !d.vibes.includes('photo_spot')
+    ? [...d.vibes, 'photo_spot']
+    : d.vibes) as Vibe[];
   return {
     origin: d.origin,
     budget_vnd: d.budget,
     people_count: d.people,
-    vibes: d.vibes as Vibe[],
+    vibes,
+    ...(d.stopCount ? { stop_count: d.stopCount } : {}),
     nutrition_goal: d.nutrition as NutritionGoal,
     time_window: resolveTimeWindow(d.startKey, d.durationMin),
     prompt_note: [
@@ -149,9 +157,13 @@ export default function BriefScreen({
   onBackToPlan,
   onOpenSettings,
   onGenerate,
+  onDraftChange,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<BriefDraft>(initialDraft);
+  useEffect(() => {
+    onDraftChange?.(draft);
+  }, [draft, onDraftChange]);
   const [open, setOpen] = useState<RowKey | null>(null);
   const [locating, setLocating] = useState(false);
   const [gpsMsg, setGpsMsg] = useState<string | null>(null);
@@ -508,6 +520,39 @@ export default function BriefScreen({
                 </Pressable>
                 <Text style={styles.stepValue}>{draft.people}</Text>
                 <Pressable hitSlop={6} style={styles.stepBtn} onPress={() => update({ people: Math.min(20, draft.people + 1) })}>
+                  <Ionicons name="add" size={18} color={colors.text} />
+                </Pressable>
+              </View>
+            }
+          />
+
+          <Row
+            icon="git-commit-outline"
+            label="Số điểm dừng"
+            value={draft.stopCount ? `${draft.stopCount} điểm` : `Tự động (${Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)))} điểm)`}
+            right={
+              <View style={styles.stepper}>
+                <Pressable
+                  hitSlop={6}
+                  style={styles.stepBtn}
+                  onPress={() => {
+                    const cur = draft.stopCount ?? Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)));
+                    update({ stopCount: Math.max(1, cur - 1) });
+                  }}
+                >
+                  <Ionicons name="remove" size={18} color={colors.text} />
+                </Pressable>
+                <Pressable hitSlop={6} onPress={() => update({ stopCount: null })}>
+                  <Text style={styles.stepValue}>{draft.stopCount ?? 'A'}</Text>
+                </Pressable>
+                <Pressable
+                  hitSlop={6}
+                  style={styles.stepBtn}
+                  onPress={() => {
+                    const cur = draft.stopCount ?? Math.max(2, Math.min(6, Math.round(draft.durationMin / 95)));
+                    update({ stopCount: Math.min(8, cur + 1) });
+                  }}
+                >
                   <Ionicons name="add" size={18} color={colors.text} />
                 </Pressable>
               </View>

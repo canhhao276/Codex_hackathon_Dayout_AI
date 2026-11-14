@@ -25,6 +25,8 @@ export interface GenerateRequest {
   nutrition_goal: NutritionGoal;
   time_window: { start: string; end: string };
   prompt_note: string;
+  /** Tuỳ chọn (ngoài contract khoá cứng): số điểm dừng muốn có; bỏ trống = tự tính theo thời lượng. */
+  stop_count?: number;
 }
 
 export interface ItinerarySummary {

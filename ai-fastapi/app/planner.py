@@ -159,7 +159,8 @@ def infer_goal(badge: str) -> str:
 
 # ---------------- selection ----------------
 def n_stops_for(ctx: PlanContext) -> int:
-    return 4 if ctx.window_minutes >= 330 else 3
+    # ~1 điểm / 95 phút (gồm di chuyển): 2–3h → 2, 4–5h → 3, 6–7h → 4, 8h → 5, 10h+ → 6.
+    return max(2, min(6, round(ctx.window_minutes / 95)))
 
 
 def plan_slots(ctx: PlanContext, n: int) -> list[str]:
@@ -411,7 +412,8 @@ async def generate(req: GenerateRequest) -> tuple[dict, str]:
     candidates = select_candidates(ctx, ctx.origin_lat, ctx.origin_lng, k=20)
     if len(candidates) < 2:
         raise NoPlacesError("Không tìm thấy đủ địa điểm quanh vị trí này. Hãy thử lại hoặc chọn khu vực khác.")
-    n = min(n_stops_for(ctx), len(candidates))
+    wanted = req.stop_count if req.stop_count and 1 <= req.stop_count <= 8 else n_stops_for(ctx)
+    n = min(wanted, len(candidates))
     by_id = {p["id"]: p for p in candidates}
 
     ai = await llm.choose_stops(ctx, candidates, n, timeout=OPENAI_TIMEOUT_GENERATE)
@@ -434,7 +436,7 @@ async def generate(req: GenerateRequest) -> tuple[dict, str]:
                 )
             )
             prev = (poi["lat"], poi["lng"])
-            if len(planned) >= 4:
+            if len(planned) >= n:
                 break
         if planned:
             engine = "openai"

@@ -48,6 +48,8 @@ class GenerateRequest(Lenient):
     nutrition_goal: str = "balanced"
     time_window: TimeWindow = Field(default_factory=TimeWindow)
     prompt_note: str = ""
+    # Tuỳ chọn (ngoài contract khoá cứng): số điểm dừng người dùng muốn; None = tự tính theo thời lượng.
+    stop_count: Optional[int] = None
 
 
 class ReplanRequest(Lenient):

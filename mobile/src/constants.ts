@@ -67,6 +67,7 @@ export const DURATION_DEFAULT = 7 * 60;
 // Sở thích mở rộng: FastAPI chỉ chấm điểm theo 5 vibe chuẩn ở trên, nên các sở thích này
 // (và sở thích người dùng tự gõ) được gửi qua prompt_note để OpenAI đọc và cân nhắc.
 export const EXTRA_VIBES = [
+  'Photobooth',
   'Lãng mạn',
   'Thiên nhiên',
   'Triển lãm',

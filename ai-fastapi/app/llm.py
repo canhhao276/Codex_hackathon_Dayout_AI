@@ -111,8 +111,8 @@ async def choose_stops(ctx: PlanContext, candidates: list[dict], n_stops: int, t
 
 Hãy chọn ĐÚNG {n_stops} điểm dừng khác nhau, theo thứ tự đi hợp lý:
 1. TỔNG chi phí/người <= {ctx.budget_pp:,} VNĐ (càng sát ngân sách càng tốt, không vượt).
-2. Có ít nhất 1 điểm loại "food" làm bữa chính; tránh 2 điểm cùng loại liền nhau.
-3. Ưu tiên khớp vibe & chế độ dinh dưỡng; tránh món "indulgent" nếu là Eat Clean/Ít đường.
+2. SỞ THÍCH NGƯỜI DÙNG LÀ ƯU TIÊN SỐ 1: đa số điểm dừng phải khớp vibe đã chọn (được phép 2 điểm cùng loại nếu đúng sở thích, VD nhiều điểm chụp ảnh). Đọc kỹ "Ghi chú" — sở thích thêm ở đó (VD photobooth, xem phim) phải được đáp ứng nếu có ứng viên phù hợp.
+3. Chỉ thêm 1 bữa chính loại "food" khi khung giờ đi qua giờ ăn (11:00–13:30 hoặc 17:30–20:30) hoặc người dùng muốn ăn uống; không nhồi cafe/tráng miệng nếu người dùng không chọn. Tránh món "indulgent" nếu là Eat Clean/Ít đường.
 4. Các điểm gần nhau, không đi vòng; quán phải đang mở trong khung giờ. Đa dạng trải nghiệm: không quá 2 điểm trong cùng 1 tòa nhà/TTTM; nếu có vibe chụp ảnh hãy cân nhắc 1 điểm ngoài trời đẹp.
 5. recommended_items: 1-2 món/hoạt động lấy từ cột "món" của chính địa điểm đó (có thể thêm "ít đường", "thêm rau").
 6. ai_reason: tối đa 18 từ, nêu lý do cụ thể (vibe, khoảng cách, giá, dinh dưỡng).

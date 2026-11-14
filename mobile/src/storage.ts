@@ -18,6 +18,8 @@ export interface BriefDraft {
   description: string;
   /** Điểm kết thúc tuỳ chọn (null = không cố định). */
   destination: { lat: number; lng: number; label: string } | null;
+  /** Số điểm dừng (null = tự động theo thời lượng). */
+  stopCount: number | null;
 }
 
 async function readJson<T>(key: string): Promise<T | null> {

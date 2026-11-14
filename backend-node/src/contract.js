@@ -86,6 +86,10 @@ export function normalizeGenerateRequest(body = {}) {
     nutrition_goal,
     time_window,
     prompt_note,
+    // Tuỳ chọn: số điểm dừng người dùng muốn (1–8); bỏ trống = FastAPI tự tính theo thời lượng.
+    ...(Number.isInteger(Number(src.stop_count)) && Number(src.stop_count) >= 1 && Number(src.stop_count) <= 8
+      ? { stop_count: Number(src.stop_count) }
+      : {}),
   };
 }
 
