@@ -5,6 +5,14 @@
 
 ---
 
+## Cách Khởi Chạy Nhanh Cho 3 Thành Viên (1 Câu Lệnh Duy Nhất)
+Sau khi `git pull` (hoặc chép file `HACKATHON_PLAN.md` này vào thư mục repo `Codex_hackathon_Dayout_AI`), mỗi thành viên chỉ cần mở AI Agent (Codex / Antigravity) và nhắn đúng 1 câu:
+- **Người 1:** `"Đọc file HACKATHON_PLAN.md, tôi là Người 1. Hãy tự tạo nhánh Git và thực hiện toàn bộ phần của Người 1."`
+- **Người 2:** `"Đọc file HACKATHON_PLAN.md, tôi là Người 2. Hãy tự tạo nhánh Git và thực hiện toàn bộ phần của Người 2."`
+- **Người 3:** `"Đọc file HACKATHON_PLAN.md, tôi là Người 3. Hãy tự tạo nhánh Git và thực hiện toàn bộ phần của Người 3."`
+
+---
+
 ## Mục Lục Nhanh Cho 3 Thành Viên
 1. [Tiêu Chí Chấm Điểm & Luật Sinh Tử (Đọc trong 2 phút)](#1-tiêu-chí-chấm-điểm--luật-sinh-tử)
 2. [Phạm Vi MVP "Dayout AI" (Cắt Gọt Chuẩn 4 Giờ)](#2-phạm-vi-mvp-dayout-ai-cắt-gọt-chuẩn-4-giờ)
@@ -199,13 +207,20 @@ Codex_hackathon/
 
 ---
 
-## 8. Bộ 3 Prompt Mẫu Copy-Paste Cho AI Agent
+## 8. Bộ 3 Chỉ Dẫn Thực Thi Tự Động Cho AI Agent (Bao Gồm Tự Tạo Nhánh Git)
 
-### 8.1. Prompt cho NGƯỜI 1 (Dán vào Agent để làm thư mục `mobile/`)
+> **Quy tắc bắt buộc cho AI Agent khi người dùng xưng là Người 1 / Người 2 / Người 3:**  
+> Ngay khi người dùng cho biết họ là thành viên số mấy, Agent PHẢI tự động thực hiện từ **Bước 0 (Tạo nhánh Git & `.gitignore` riêng)** cho tới khi hoàn thành và kiểm thử xong toàn bộ module của người đó mà không chạm vào thư mục của thành viên khác.
+
+### 8.1. Chỉ dẫn cho Agent của NGƯỜI 1 (`mobile/` — Nhánh `feat/mobile`)
 ```text
 Hãy đọc file `HACKATHON_PLAN.md` (đặc biệt Mục 7 JSON API Contract) và xây dựng hoàn chỉnh ứng dụng di động Android "Dayout AI" bằng React Native (Expo TypeScript) nằm gọn hoàn toàn trong thư mục `mobile/`.
 
-Yêu cầu kỹ thuật bắt buộc:
+Yêu cầu thực thi tuần tự bắt buộc:
+0. TỰ ĐỘNG TẠO NHÁNH GIT & CHỐNG LỘ FILE NẶNG (Làm đầu tiên trước khi viết code):
+   - Kiểm tra Git và tự động chuyển sang nhánh riêng: chạy `git checkout -b feat/mobile` (nếu nhánh đã tồn tại thì chạy `git checkout feat/mobile`). Tuyệt đối không commit trực tiếp lên `main`.
+   - Tạo ngay file `mobile/.gitignore` chặn `node_modules/`, `.expo/`, `dist/`, `android/`, `ios/`, `*.apk`, `.env*`.
+   - Chỉ được phép tạo và sửa file bên trong thư mục `mobile/`.
 1. BẢN ĐỒ MIỄN PHÍ KHÔNG CẦN API KEY: Tuyệt đối KHÔNG dùng Google Maps SDK (`react-native-maps` mặc định sẽ crash trên Android khi không có key). Hãy dùng `react-native-webview` nhúng Leaflet 1.9 + CartoDB Voyager / OpenStreetMap tiles miễn phí. Vẽ các Marker đánh số thứ tự nổi bật 1->2->3->4, vẽ đường nối lộ trình từ mảng `route_polyline`, tự động fitBounds và khi người dùng bấm vào thẻ chặng ở dưới thì bản đồ `flyTo` mượt tới điểm đó.
 2. KHÔNG LÀM GIAO DIỆN CHATBOT. Thiết kế UI di động hiện đại, trực quan gồm 2 màn hình chính:
    - Màn 1 (Smart Brief): Nút lấy tọa độ GPS hiện tại bằng `expo-location` (nếu từ chối quyền hoặc đang test thì mặc định về 79 Nguyễn Như Kon Tum: lat 21.0012, lng 105.8035), chọn Ngân sách/người (200k - 800k VNĐ), chọn Số người, chọn Chips Vibe (`chill_cafe`, `interactive_activity`, `local_food`, `photo_spot`, `night_chill`), chọn Chips Dinh dưỡng (`balanced`, `eat_clean`, `high_protein`, `low_sugar`) và 1 ô ghi chú ngắn `prompt_note`.
@@ -216,11 +231,15 @@ Yêu cầu kỹ thuật bắt buộc:
 6. Có sẵn dữ liệu mẫu chuẩn JSON Contract để test UI độc lập nếu chưa bật server, nhưng luôn ưu tiên gọi API thật.
 ```
 
-### 8.2. Prompt cho NGƯỜI 2 (Dán vào Agent để làm thư mục `backend-node/`)
+### 8.2. Chỉ dẫn cho Agent của NGƯỜI 2 (`backend-node/` — Nhánh `feat/node-api`)
 ```text
-Hãy đọc file `HACKATHON_PLAN.md` (đặc biệt Mục 7 JSON API Contract) và xây dựng hoàn chỉnh service `backend-node/` bằng Node.js + Express (chạy tại cổng 3000) cho dự án "Dayout AI". Chỉ tạo và chỉnh sửa file bên trong `backend-node/`.
+Hãy đọc file `HACKATHON_PLAN.md` (đặc biệt Mục 7 JSON API Contract) và xây dựng hoàn chỉnh service `backend-node/` bằng Node.js + Express (chạy tại cổng 3000) cho dự án "Dayout AI".
 
-Yêu cầu kỹ thuật bắt buộc:
+Yêu cầu thực thi tuần tự bắt buộc:
+0. TỰ ĐỘNG TẠO NHÁNH GIT & CHỐNG LỘ FILE NẶNG (Làm đầu tiên trước khi viết code):
+   - Kiểm tra Git và tự động chuyển sang nhánh riêng: chạy `git checkout -b feat/node-api` (nếu nhánh đã tồn tại thì chạy `git checkout feat/node-api`). Tuyệt đối không commit trực tiếp lên `main`.
+   - Tạo ngay file `backend-node/.gitignore` chặn `node_modules/`, `.env`, `*.log`.
+   - Chỉ được phép tạo và sửa file bên trong thư mục `backend-node/`.
 1. API Gateway & Persistence bền vững:
    - Bật CORS đầy đủ, đọc biến môi trường `PORT=3000`, `AI_SERVICE_URL=http://127.0.0.1:8000`, `PUBLIC_BASE_URL` (hoặc tự động suy ra từ header `x-forwarded-proto` / `host` để chạy mượt với Cloudflare Tunnel).
    - `POST /api/v1/itineraries/generate`: Nhận body từ Mobile, gọi sang `${AI_SERVICE_URL}/ai/generate`, sinh mã ngắn `shortCode` (VD 5 ký tự), gắn `itinerary_id` và `share_url` (`${baseUrl}/s/${shortCode}`), lưu vào file JSON bền vững `backend-node/data/store.json`, cập nhật bộ đếm thống kê và trả về đúng cấu trúc `ItineraryResponse`.
@@ -233,11 +252,15 @@ Yêu cầu kỹ thuật bắt buộc:
    - `GET /api/v1/stats` (JSON) và `GET /admin/stats` (Trang web trực quan) hiển thị số lượng Lịch trình AI đã tạo, số lượt AI Re-plan thời gian thực, và tổng số Người dùng/Bạn bè đã tương tác tham gia kèo.
 ```
 
-### 8.3. Prompt cho NGƯỜI 3 (Dán vào Agent để làm thư mục `ai-fastapi/`)
+### 8.3. Chỉ dẫn cho Agent của NGƯỜI 3 (`ai-fastapi/` — Nhánh `feat/ai-fastapi`)
 ```text
-Hãy đọc file `HACKATHON_PLAN.md` (đặc biệt Mục 7 JSON API Contract) và xây dựng hoàn chỉnh AI & Spatial Engine trong thư mục `ai-fastapi/` bằng Python FastAPI (chạy tại cổng 8000). Chỉ tạo và chỉnh sửa file bên trong `ai-fastapi/`.
+Hãy đọc file `HACKATHON_PLAN.md` (đặc biệt Mục 7 JSON API Contract) và xây dựng hoàn chỉnh AI & Spatial Engine trong thư mục `ai-fastapi/` bằng Python FastAPI (chạy tại cổng 8000).
 
-Yêu cầu kỹ thuật bắt buộc:
+Yêu cầu thực thi tuần tự bắt buộc:
+0. TỰ ĐỘNG TẠO NHÁNH GIT & BẢO MẬT API KEY (Làm đầu tiên trước khi viết code):
+   - Kiểm tra Git và tự động chuyển sang nhánh riêng: chạy `git checkout -b feat/ai-fastapi` (nếu nhánh đã tồn tại thì chạy `git checkout feat/ai-fastapi`). Tuyệt đối không commit trực tiếp lên `main`.
+   - Tạo ngay file `ai-fastapi/.gitignore` chặn `.venv/`, `venv/`, `__pycache__/`, `.env` (TUYỆT ĐỐI không đẩy `OPENAI_API_KEY` lên GitHub!).
+   - Chỉ được phép tạo và sửa file bên trong thư mục `ai-fastapi/`.
 1. Dữ liệu Địa điểm thật & Khả năng mở rộng toàn cầu:
    - Tạo file `ai-fastapi/data/hanoi_pois.json` chứa ít nhất 60 địa điểm CÓ THẬT, nổi tiếng tại Hà Nội (đặc biệt ưu tiên dày đặc quanh Thanh Xuân - Nguyễn Như Kon Tum - Nhân Chính - Vũ Trọng Phụng - Royal City, cùng với Đống Đa, Cầu Giấy, Hoàn Kiếm, Tây Hồ) phủ đủ các loại: `cafe`, `activity` (workshop gốm/vẽ, bowling, boardgame, triển lãm, rạp chiếu phim, công viên), `food` (quán ăn chính đa dạng từ healthy/salad/phở cuốn/bún tới lẩu/nướng), `dessert_chill` (trà, chè, sữa chua, acoustic). Mỗi địa điểm có tọa độ `lat`, `lng` sát thực tế, `address`, `indoor` (boolean), `estimated_cost_vnd`, `recommended_items` (mảng món ăn cụ thể), `estimated_calories_kcal`, `nutrition_tags`, `vibes`.
    - Viết thêm hàm bổ trợ truy vấn OpenStreetMap Overpass API miễn phí (timeout 2.5s) khi tọa độ `origin` nằm ngoài phạm vi Hà Nội để hệ thống chứng minh khả năng hoạt động ở bất kỳ thành phố nào trên thế giới.
