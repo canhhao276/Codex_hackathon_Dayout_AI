@@ -71,12 +71,14 @@ SYSTEM_PLANNER = (
 
 
 def _stop_schema(ids: list[str]) -> dict:
+    # No per-request `enum`: a new strict schema costs OpenAI ~3s of extra preprocessing on
+    # every call. The schema stays constant (cached); unknown ids are dropped in planner.py.
     return {
         "type": "object",
         "additionalProperties": False,
         "required": ["poi_id", "recommended_items", "ai_reason", "nutrition_note"],
         "properties": {
-            "poi_id": {"type": "string", "enum": ids},
+            "poi_id": {"type": "string"},
             "recommended_items": {"type": "array", "items": {"type": "string"}},
             "ai_reason": {"type": "string"},
             "nutrition_note": {"type": "string"},
@@ -153,7 +155,7 @@ async def choose_replacements(
                     "required": ["target_order", "poi_id", "recommended_items", "ai_reason", "nutrition_note"],
                     "properties": {
                         "target_order": {"type": "integer"},
-                        "poi_id": {"type": "string", "enum": all_ids},
+                        "poi_id": {"type": "string"},  # validated against candidates in planner.py
                         "recommended_items": {"type": "array", "items": {"type": "string"}},
                         "ai_reason": {"type": "string"},
                         "nutrition_note": {"type": "string"},

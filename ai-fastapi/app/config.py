@@ -21,8 +21,8 @@ def _float(name: str, default: float) -> float:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
-OPENAI_TIMEOUT_GENERATE = _float("OPENAI_TIMEOUT_GENERATE", 4.0)
-OPENAI_TIMEOUT_REPLAN = _float("OPENAI_TIMEOUT_REPLAN", 2.8)
+OPENAI_TIMEOUT_GENERATE = _float("OPENAI_TIMEOUT_GENERATE", 6.0)
+OPENAI_TIMEOUT_REPLAN = _float("OPENAI_TIMEOUT_REPLAN", 4.5)
 
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
 OSRM_TIMEOUT = _float("OSRM_TIMEOUT", 2.5)
@@ -30,8 +30,8 @@ OVERPASS_URL = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interprete
 OVERPASS_TIMEOUT = _float("OVERPASS_TIMEOUT", 2.5)
 
 # End-to-end latency targets (seconds) used to shrink the routing timeout adaptively.
-GENERATE_DEADLINE = 4.8
-REPLAN_DEADLINE = 3.4
+GENERATE_DEADLINE = 8.0  # Node BFF waits up to 10s
+REPLAN_DEADLINE = 6.5
 
 USER_AGENT = "DayoutAI-Hackathon/1.0"
 

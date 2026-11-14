@@ -263,7 +263,7 @@ def test_openai_structured_output_wiring(monkeypatch):
         body = _json.loads(request.content)
         captured["body"] = body
         schema = body["response_format"]["json_schema"]["schema"]
-        ids = schema["properties"]["stops"]["items"]["properties"]["poi_id"]["enum"]
+        ids = [l.split(" | ")[0] for l in body["messages"][1]["content"].splitlines() if l.startswith("poi_")]
         content = {
             "title": "Test",
             "nutrition_highlight": "Ít đường",
@@ -286,4 +286,6 @@ def test_openai_structured_output_wiring(monkeypatch):
     assert out and len(out["stops"]) == 3
     rf = captured["body"]["response_format"]
     assert rf["type"] == "json_schema" and rf["json_schema"]["strict"] is True
-    assert set(rf["json_schema"]["schema"]["properties"]["stops"]["items"]["properties"]["poi_id"]["enum"]) == {p["id"] for p in cands}
+    # constant schema (no per-request enum) so OpenAI can cache it; ids come from the prompt
+    assert "enum" not in rf["json_schema"]["schema"]["properties"]["stops"]["items"]["properties"]["poi_id"]
+    assert {s["poi_id"] for s in out["stops"]} <= {p["id"] for p in cands}
