@@ -115,7 +115,18 @@ export default function PlaceReviews({ stop, apiBaseUrl }: { stop: Stop; apiBase
         </ScrollView>
       )}
 
-      {/* Google */}
+      {/* Google — chỉ hiện khi server có GOOGLE_MAPS_API_KEY; không có key thì mở Google Maps (miễn phí). */}
+      {!g ? (
+        <Pressable onPress={openMaps} style={styles.mapsCard}>
+          <Ionicons name="logo-google" size={20} color={colors.primary} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.section}>Xem điểm & bình luận trên Google Maps</Text>
+            <Text style={styles.muted}>Ảnh thật, số sao và đánh giá của người dùng Google</Text>
+          </View>
+          <Ionicons name="open-outline" size={18} color={colors.primary} />
+        </Pressable>
+      ) : (
+      <>
       <View style={styles.sectionHead}>
         <Text style={styles.section}>Đánh giá Google</Text>
         {g?.rating != null && (
@@ -163,6 +174,8 @@ export default function PlaceReviews({ stop, apiBaseUrl }: { stop: Stop; apiBase
         <Ionicons name="logo-google" size={14} color={colors.primary} />
         <Text style={styles.mapsText}>Xem tất cả trên Google Maps</Text>
       </Pressable>
+      </>
+      )}
 
       {/* Cộng đồng Dayout */}
       <View style={[styles.sectionHead, { marginTop: 14 }]}>
@@ -254,6 +267,13 @@ const styles = StyleSheet.create({
   author: { fontSize: 13, fontWeight: '700', color: colors.text },
   reviewText: { fontSize: 13, color: colors.text, marginTop: 3, lineHeight: 18 },
   mapsBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
+  mapsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+  },
   mapsText: { fontSize: 13, fontWeight: '700', color: colors.primary },
   form: { marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.sunken },
   formTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
