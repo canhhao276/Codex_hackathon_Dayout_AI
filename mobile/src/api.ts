@@ -173,7 +173,15 @@ export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; text:
     typeof ai === 'object' ? ai.online ?? ai.ok ?? ai.status === 'ok' : ai === true || ai === 'ok';
   if (online) {
     const lat = typeof ai === 'object' && ai.latency_ms != null ? `, ${ai.latency_ms}ms` : '';
-    return { ok: true, text: `Server OK (${ms}ms) • AI FastAPI online${lat}` };
+    // FastAPI (Người 3) chạy thuật toán dự phòng khi thiếu OPENAI_API_KEY → không phải AI thật.
+    if (typeof ai === 'object' && ai.detail?.openai_configured === false) {
+      return {
+        ok: false,
+        text: `Server OK (${ms}ms) • FastAPI online nhưng CHƯA có OPENAI_API_KEY → đang dùng thuật toán dự phòng, không phải AI!`,
+      };
+    }
+    const model = typeof ai === 'object' && ai.detail?.model ? ` • ${ai.detail.model}` : '';
+    return { ok: true, text: `Server OK (${ms}ms) • AI online${lat}${model}` };
   }
   return { ok: false, text: `Server OK (${ms}ms) nhưng AI FastAPI OFFLINE → lịch trình sẽ là dự phòng, không phải AI!` };
 }
