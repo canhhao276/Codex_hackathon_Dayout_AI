@@ -27,6 +27,15 @@ export function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 function toFiniteNumber(val, fallback) {
+  if (
+    val === null ||
+    val === undefined ||
+    typeof val === 'boolean' ||
+    typeof val === 'object' ||
+    (typeof val === 'string' && val.trim() === '')
+  ) {
+    return fallback;
+  }
   const num = Number(val);
   return Number.isFinite(num) ? num : fallback;
 }
@@ -49,10 +58,11 @@ export function normalizeGenerateRequest(body = {}) {
   const budget_vnd = Math.max(50000, Math.round(budgetRaw));
   const people_count = Math.max(1, Math.min(20, Math.round(toFiniteNumber(src.people_count, 2))));
 
-  const vibes =
-    Array.isArray(src.vibes) && src.vibes.length > 0
-      ? src.vibes.map((v) => String(v).trim()).filter(Boolean)
-      : ['chill_cafe', 'interactive_activity', 'local_food'];
+  const defaultVibes = ['chill_cafe', 'interactive_activity', 'local_food'];
+  const filteredVibes = Array.isArray(src.vibes)
+    ? src.vibes.map((v) => String(v ?? '').trim()).filter(Boolean)
+    : [];
+  const vibes = filteredVibes.length > 0 ? filteredVibes : defaultVibes;
 
   const nutrition_goal =
     typeof src.nutrition_goal === 'string' && src.nutrition_goal.trim()
@@ -125,38 +135,47 @@ export function extractShareCode(shareUrl) {
  */
 export function normalizeReplanRequest(body = {}) {
   const src = body && typeof body === 'object' ? body : {};
-  const current_itinerary =
+  const rawCurrentItinerary =
     src.current_itinerary && typeof src.current_itinerary === 'object'
       ? src.current_itinerary
+      : null;
+  const current_itinerary =
+    rawCurrentItinerary &&
+    Array.isArray(rawCurrentItinerary.stops) &&
+    rawCurrentItinerary.stops.length > 0
+      ? rawCurrentItinerary
       : null;
 
   const itinerary_id =
     typeof src.itinerary_id === 'string' && src.itinerary_id.trim()
       ? src.itinerary_id.trim()
-      : typeof current_itinerary?.itinerary_id === 'string'
-        ? current_itinerary.itinerary_id.trim()
+      : typeof rawCurrentItinerary?.itinerary_id === 'string' &&
+          rawCurrentItinerary.itinerary_id.trim()
+        ? rawCurrentItinerary.itinerary_id.trim()
         : undefined;
+
+  const share_url_hint =
+    typeof rawCurrentItinerary?.share_url === 'string' && rawCurrentItinerary.share_url.trim()
+      ? rawCurrentItinerary.share_url.trim()
+      : undefined;
 
   const reasonRaw = typeof src.reason === 'string' ? src.reason.trim() : 'rainy_weather';
   const reason = VALID_REASONS.has(reasonRaw) ? reasonRaw : reasonRaw || 'rainy_weather';
 
-  const hasExplicitTarget =
-    src.target_stop_order !== undefined &&
-    src.target_stop_order !== null &&
-    src.target_stop_order !== '' &&
-    Number.isFinite(Number(src.target_stop_order));
+  const parsedTargetOrder = toFiniteNumber(src.target_stop_order, null);
+  const hasExplicitTarget = parsedTargetOrder !== null;
 
   const target_stop_order = hasExplicitTarget
-    ? Math.max(1, Math.round(Number(src.target_stop_order)))
+    ? Math.max(1, Math.round(parsedTargetOrder))
     : inferTargetStopOrder(current_itinerary?.stops, reason);
 
+  const parsedNewBudget = toFiniteNumber(src.new_budget_vnd, null);
   const new_budget_vnd =
-    src.new_budget_vnd !== undefined && src.new_budget_vnd !== null
-      ? Math.max(50000, Math.round(toFiniteNumber(src.new_budget_vnd, 350000)))
-      : undefined;
+    parsedNewBudget !== null ? Math.max(50000, Math.round(parsedNewBudget)) : undefined;
 
   return {
     itinerary_id,
+    share_url_hint,
     current_itinerary,
     target_stop_order,
     has_explicit_target: hasExplicitTarget,
@@ -171,6 +190,14 @@ function normalizeStop(stop = {}, idx = 0) {
   const recommended_items = Array.isArray(stop.recommended_items)
     ? stop.recommended_items.map((item) => String(item)).filter(Boolean)
     : [];
+  const rawDistance =
+    stop.distance_to_next_km !== undefined && stop.distance_to_next_km !== null
+      ? toFiniteNumber(stop.distance_to_next_km, null)
+      : null;
+  const rawTravel =
+    stop.travel_to_next_minutes !== undefined && stop.travel_to_next_minutes !== null
+      ? toFiniteNumber(stop.travel_to_next_minutes, null)
+      : null;
 
   return {
     order: Math.max(1, Math.round(toFiniteNumber(stop.order, idx + 1))),
@@ -211,13 +238,9 @@ function normalizeStop(stop = {}, idx = 0) {
       typeof stop.nutrition_note === 'string' ? stop.nutrition_note.trim() : '',
     ai_reason: typeof stop.ai_reason === 'string' ? stop.ai_reason.trim() : '',
     distance_to_next_km:
-      stop.distance_to_next_km !== undefined
-        ? Number(toFiniteNumber(stop.distance_to_next_km, 0).toFixed(2))
-        : null,
+      rawDistance !== null ? Math.max(0, Number(rawDistance.toFixed(2))) : null,
     travel_to_next_minutes:
-      stop.travel_to_next_minutes !== undefined
-        ? Math.max(0, Math.round(toFiniteNumber(stop.travel_to_next_minutes, 0)))
-        : null,
+      rawTravel !== null ? Math.max(0, Math.round(rawTravel)) : null,
   };
 }
 

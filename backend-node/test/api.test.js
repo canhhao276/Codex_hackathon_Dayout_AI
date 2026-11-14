@@ -519,4 +519,332 @@ describe('Dayout AI Node.js BFF API & Views', () => {
       await srv.close();
     }
   });
+
+  it('Test 8: Contract edge cases (null inputs, empty vibes, null distances -> Haversine, empty stops -> fallback, empty current_itinerary + store hydration, Hoan Kiem origin preservation, timeout, CORS expose, HTML form validation)', async () => {
+    let mode = 'null-distance';
+    let lastGenPayload = null;
+    let lastReplanPayload = null;
+
+    const customFastApi = await listenServer((req, res) => {
+      let bodyStr = '';
+      req.on('data', (chunk) => {
+        bodyStr += chunk;
+      });
+      req.on('end', () => {
+        if (req.method === 'POST' && req.url === '/ai/generate') {
+          lastGenPayload = JSON.parse(bodyStr || '{}');
+          if (mode === 'empty-stops') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ stops: [] }));
+            return;
+          }
+          if (mode === 'slow') {
+            setTimeout(() => {
+              if (!res.writableEnded) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ stops: [] }));
+              }
+            }, 250);
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              summary: {
+                title: 'Lộ trình Hoàn Kiếm Null-Safe',
+                total_cost_per_person_vnd: null,
+                budget_per_person_vnd: null,
+                total_calories_kcal: null,
+                total_distance_km: null,
+                total_travel_minutes: null,
+              },
+              stops: [
+                {
+                  order: 1,
+                  stop_id: 'hk_stop_1',
+                  name: 'Cafe Phố Cổ',
+                  category: 'cafe',
+                  address: '11 Hàng Gai, Hoàn Kiếm, Hà Nội',
+                  lat: 21.0322,
+                  lng: 105.8502,
+                  indoor: true,
+                  estimated_cost_vnd: 65000,
+                  estimated_calories_kcal: 150,
+                  distance_to_next_km: null,
+                  travel_to_next_minutes: null,
+                },
+                {
+                  order: 2,
+                  stop_id: 'hk_stop_2',
+                  name: 'Hồ Hoàn Kiếm',
+                  category: 'activity',
+                  address: 'Đinh Tiên Hoàng, Hoàn Kiếm, Hà Nội',
+                  lat: 21.0288,
+                  lng: 105.8525,
+                  indoor: false,
+                  estimated_cost_vnd: 20000,
+                  estimated_calories_kcal: 0,
+                  distance_to_next_km: null,
+                  travel_to_next_minutes: null,
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        if (req.method === 'POST' && req.url === '/ai/replan') {
+          lastReplanPayload = JSON.parse(bodyStr || '{}');
+          if (mode === 'empty-stops') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ stops: [] }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              summary: {
+                title: 'Lộ trình Hoàn Kiếm Sau Replan',
+                budget_per_person_vnd: 350000,
+              },
+              // Omit route_polyline on purpose to verify origin preservation
+              stops: [
+                {
+                  order: 1,
+                  stop_id: 'hk_stop_1',
+                  name: 'Cafe Phố Cổ',
+                  category: 'cafe',
+                  address: '11 Hàng Gai, Hoàn Kiếm, Hà Nội',
+                  lat: 21.0322,
+                  lng: 105.8502,
+                  indoor: true,
+                  estimated_cost_vnd: 65000,
+                  estimated_calories_kcal: 150,
+                  distance_to_next_km: null,
+                  travel_to_next_minutes: null,
+                },
+                {
+                  order: 2,
+                  stop_id: 'hk_stop_2_indoor',
+                  name: 'Bảo tàng Lịch sử Quốc gia',
+                  category: 'activity',
+                  address: '1 Tràng Tiền, Hoàn Kiếm, Hà Nội',
+                  lat: 21.0247,
+                  lng: 105.8597,
+                  indoor: true,
+                  estimated_cost_vnd: 40000,
+                  estimated_calories_kcal: 0,
+                  distance_to_next_km: 0,
+                  travel_to_next_minutes: 0,
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        res.writeHead(404);
+        res.end('Not Found');
+      });
+    });
+
+    const test8StorePath = path.join(tmpDir, 'test8-store.json');
+    const app = createApp({
+      aiServiceUrl: customFastApi.url,
+      storePath: test8StorePath,
+      useOsrm: false,
+      aiTimeoutMs: 80,
+    });
+    const strictApp = createApp({
+      aiServiceUrl: customFastApi.url,
+      storePath: path.join(tmpDir, 'test8-strict-store.json'),
+      useOsrm: false,
+      allowFallback: false,
+      aiTimeoutMs: 80,
+    });
+
+    const srv = await listenServer(app);
+    const strictSrv = await listenServer(strictApp);
+
+    try {
+      // 1. Null lat/lng/budget/people, whitespace-only vibes, and null distances from FastAPI
+      mode = 'null-distance';
+      const nullRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost:8081',
+        },
+        body: JSON.stringify({
+          origin: { lat: null, lng: null, label: '' },
+          budget_vnd: null,
+          people_count: null,
+          vibes: ['   ', ''],
+        }),
+      });
+      assert.equal(nullRes.status, 200);
+      assert.equal(nullRes.headers.get('x-ai-source'), 'fastapi');
+      assert.match(nullRes.headers.get('access-control-expose-headers') || '', /X-AI-Source/i);
+
+      assert.equal(lastGenPayload.origin.lat, 21.0012);
+      assert.equal(lastGenPayload.origin.lng, 105.8035);
+      assert.equal(lastGenPayload.budget_vnd, 350000);
+      assert.equal(lastGenPayload.people_count, 2);
+      assert.deepEqual(lastGenPayload.vibes, ['chill_cafe', 'interactive_activity', 'local_food']);
+
+      const nullData = await nullRes.json();
+      assertItineraryContract(nullData);
+      assert.ok(nullData.stops[0].distance_to_next_km > 0);
+      assert.ok(nullData.stops[0].travel_to_next_minutes >= 2);
+      assert.ok(nullData.summary.total_distance_km > 0);
+      assert.equal(nullData.summary.budget_per_person_vnd, 350000);
+      assert.equal(nullData.summary.total_cost_per_person_vnd, 85000);
+
+      // 2. FastAPI returns 200 { stops: [] } -> falls back on normal app, returns 502 on strict app
+      mode = 'empty-stops';
+      const emptyFallbackRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget_vnd: 350000 }),
+      });
+      assert.equal(emptyFallbackRes.status, 200);
+      assert.equal(emptyFallbackRes.headers.get('x-ai-source'), 'fallback');
+      const emptyFallbackData = await emptyFallbackRes.json();
+      assertItineraryContract(emptyFallbackData);
+
+      const emptyStrictRes = await fetch(`${strictSrv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget_vnd: 350000 }),
+      });
+      assert.equal(emptyStrictRes.status, 502);
+
+      const emptyReplanFallbackRes = await fetch(`${srv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itinerary_id: emptyFallbackData.itinerary_id,
+          current_itinerary: {},
+          reason: 'rainy_weather',
+        }),
+      });
+      assert.equal(emptyReplanFallbackRes.status, 200);
+      assert.equal(emptyReplanFallbackRes.headers.get('x-ai-source'), 'fallback');
+
+      const emptyReplanStrictRes = await fetch(`${strictSrv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_itinerary: emptyFallbackData,
+          reason: 'rainy_weather',
+        }),
+      });
+      assert.equal(emptyReplanStrictRes.status, 502);
+
+      // 3. Slow upstream triggers aiTimeoutMs fallback
+      mode = 'slow';
+      const slowRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget_vnd: 300000 }),
+      });
+      assert.equal(slowRes.status, 200);
+      assert.equal(slowRes.headers.get('x-ai-source'), 'fallback');
+
+      // 4. Create Hoan Kiem itinerary, then replan with current_itinerary: {} + itinerary_id and no route_polyline from AI
+      mode = 'null-distance';
+      const hkGenRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: { lat: 21.0285, lng: 105.8542, label: 'Hồ Hoàn Kiếm, Hà Nội' },
+          budget_vnd: 350000,
+        }),
+      });
+      assert.equal(hkGenRes.status, 200);
+      const hkItinerary = await hkGenRes.json();
+      assert.deepEqual(hkItinerary.route_polyline[0], [21.0285, 105.8542]);
+
+      const hkReplanRes = await fetch(`${srv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itinerary_id: hkItinerary.itinerary_id,
+          current_itinerary: {},
+          reason: 'rainy_weather',
+          new_budget_vnd: '',
+        }),
+      });
+      assert.equal(hkReplanRes.status, 200);
+      assert.equal(hkReplanRes.headers.get('x-ai-source'), 'fastapi');
+      // Hydrated full current_itinerary from store and omitted empty new_budget_vnd
+      assert.equal(lastReplanPayload.current_itinerary.itinerary_id, hkItinerary.itinerary_id);
+      assert.ok(lastReplanPayload.current_itinerary.stops.length > 0);
+      assert.equal(lastReplanPayload.new_budget_vnd, undefined);
+
+      const hkReplanned = await hkReplanRes.json();
+      assertItineraryContract(hkReplanned);
+      assert.equal(hkReplanned.itinerary_id, hkItinerary.itinerary_id);
+      assert.equal(hkReplanned.share_url, hkItinerary.share_url);
+      assert.deepEqual(hkReplanned.route_polyline[0], [21.0285, 105.8542]);
+      assert.ok(hkReplanned.stops[0].distance_to_next_km > 0);
+
+      // 4b. Replan with current_itinerary holding only share_url (no stops, no top-level itinerary_id)
+      const hintReplanRes = await fetch(`${srv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_itinerary: { share_url: hkItinerary.share_url },
+          reason: 'crowded',
+        }),
+      });
+      assert.equal(hintReplanRes.status, 200);
+      assert.equal(lastReplanPayload.current_itinerary.itinerary_id, hkItinerary.itinerary_id);
+      const hintReplanned = await hintReplanRes.json();
+      assert.equal(hintReplanned.itinerary_id, hkItinerary.itinerary_id);
+      assert.deepEqual(hintReplanned.route_polyline[0], [21.0285, 105.8542]);
+
+      // 5. HTML form submission with whitespace name redirects 303 instead of raw JSON, and missing code returns 404 HTML
+      const shortCode = hkItinerary.share_url.split('/s/')[1];
+      const blankFormRes = await fetch(`${srv.url}/api/v1/share/${shortCode}/join`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+        body: 'name=%20%20%20&status=going',
+      });
+      assert.equal(blankFormRes.status, 303);
+      assert.equal(blankFormRes.headers.get('location'), `/s/${shortCode}`);
+
+      const blankDemoFormRes = await fetch(`${srv.url}/api/v1/share/demo/join`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+        body: 'name=%20%20&status=going',
+      });
+      assert.equal(blankDemoFormRes.status, 303);
+      assert.equal(blankDemoFormRes.headers.get('location'), '/s/demo');
+
+      const missingFormRes = await fetch(`${srv.url}/api/v1/share/zzzzz/join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+        body: 'name=An',
+      });
+      assert.equal(missingFormRes.status, 404);
+      const missingFormHtml = await missingFormRes.text();
+      assert.ok(missingFormHtml.includes('Không tìm thấy mã kèo'));
+    } finally {
+      await srv.close();
+      await strictSrv.close();
+      await customFastApi.close();
+    }
+  });
 });

@@ -53,6 +53,13 @@ export function createApp(options = {}) {
     options.allowFallback !== undefined
       ? Boolean(options.allowFallback)
       : process.env.ALLOW_FALLBACK !== 'false';
+  const rawAiTimeoutMs = options.aiTimeoutMs ?? process.env.AI_TIMEOUT_MS;
+  const parsedAiTimeoutMs =
+    rawAiTimeoutMs !== undefined && rawAiTimeoutMs !== null && String(rawAiTimeoutMs).trim() !== ''
+      ? Number(rawAiTimeoutMs)
+      : 10000;
+  const aiTimeoutMs =
+    Number.isFinite(parsedAiTimeoutMs) && parsedAiTimeoutMs > 0 ? parsedAiTimeoutMs : 10000;
   const useOsrm = options.useOsrm !== undefined ? Boolean(options.useOsrm) : true;
 
   const store = options.store || createStore(options.storePath);
@@ -60,7 +67,7 @@ export function createApp(options = {}) {
 
   const app = express();
   app.set('trust proxy', true);
-  app.use(cors());
+  app.use(cors({ exposedHeaders: ['X-AI-Source'] }));
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true }));
 
@@ -108,7 +115,12 @@ export function createApp(options = {}) {
       let aiSource = 'fastapi';
 
       try {
-        rawAiResult = await callAiGenerate(aiServiceUrl, normalizedReq);
+        rawAiResult = await callAiGenerate(aiServiceUrl, normalizedReq, {
+          timeoutMs: aiTimeoutMs,
+        });
+        if (!rawAiResult || !Array.isArray(rawAiResult.stops) || rawAiResult.stops.length === 0) {
+          throw new Error('Upstream AI returned empty stops');
+        }
       } catch (err) {
         if (!allowFallback) {
           return res.status(502).json({
@@ -155,7 +167,9 @@ export function createApp(options = {}) {
     asyncHandler(async (req, res) => {
       const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
       const normalizedReplan = normalizeReplanRequest(req.body);
-      const shareCodeHint = extractShareCode(normalizedReplan.current_itinerary?.share_url);
+      const shareCodeHint = extractShareCode(
+        normalizedReplan.current_itinerary?.share_url || normalizedReplan.share_url_hint,
+      );
 
       const existingRecord =
         store.getById(normalizedReplan.itinerary_id) ||
@@ -187,14 +201,25 @@ export function createApp(options = {}) {
         if (!currentItinerary) {
           throw new Error('No base itinerary provided');
         }
-        rawReplanResult = await callAiReplan(aiServiceUrl, {
-          current_itinerary: currentItinerary,
-          target_stop_order: targetStopOrder,
-          reason: normalizedReplan.reason,
-          ...(normalizedReplan.new_budget_vnd !== undefined
-            ? { new_budget_vnd: normalizedReplan.new_budget_vnd }
-            : {}),
-        });
+        rawReplanResult = await callAiReplan(
+          aiServiceUrl,
+          {
+            current_itinerary: currentItinerary,
+            target_stop_order: targetStopOrder,
+            reason: normalizedReplan.reason,
+            ...(normalizedReplan.new_budget_vnd !== undefined
+              ? { new_budget_vnd: normalizedReplan.new_budget_vnd }
+              : {}),
+          },
+          { timeoutMs: aiTimeoutMs },
+        );
+        if (
+          !rawReplanResult ||
+          !Array.isArray(rawReplanResult.stops) ||
+          rawReplanResult.stops.length === 0
+        ) {
+          throw new Error('Upstream AI returned empty stops');
+        }
       } catch (err) {
         if (!allowFallback) {
           return res.status(502).json({
@@ -208,6 +233,25 @@ export function createApp(options = {}) {
         });
       }
 
+      const basePolyline =
+        Array.isArray(currentItinerary?.route_polyline) && currentItinerary.route_polyline.length > 0
+          ? currentItinerary.route_polyline
+          : existingRecord?.itinerary?.route_polyline;
+      const rawOriginPt = Array.isArray(basePolyline?.[0]) ? basePolyline[0] : null;
+      const originPoint =
+        rawOriginPt &&
+        rawOriginPt.length >= 2 &&
+        rawOriginPt[0] !== null &&
+        rawOriginPt[1] !== null &&
+        typeof rawOriginPt[0] !== 'boolean' &&
+        typeof rawOriginPt[1] !== 'boolean' &&
+        String(rawOriginPt[0]).trim() !== '' &&
+        String(rawOriginPt[1]).trim() !== '' &&
+        Number.isFinite(Number(rawOriginPt[0])) &&
+        Number.isFinite(Number(rawOriginPt[1]))
+          ? { lat: Number(rawOriginPt[0]), lng: Number(rawOriginPt[1]) }
+          : undefined;
+
       const prelim = normalizeItineraryResponse(rawReplanResult, {
         itineraryId: existingRecord?.itinerary_id || normalizedReplan.itinerary_id,
         shareUrl: existingRecord ? `${baseUrl}/s/${existingRecord.shortCode}` : undefined,
@@ -215,6 +259,7 @@ export function createApp(options = {}) {
           normalizedReplan.new_budget_vnd ||
           currentItinerary?.summary?.budget_per_person_vnd ||
           350000,
+        origin: originPoint,
       });
 
       const updated = store.updateReplannedItinerary(
@@ -310,10 +355,14 @@ export function createApp(options = {}) {
   app.post('/api/v1/share/:code/join', (req, res) => {
     const code = String(req.params.code || '').trim().toLowerCase();
     const { name, status, note } = req.body || {};
+    const isHtmlForm = !req.is('application/json') && req.accepts(['json', 'html']) === 'html';
 
     if (code === 'demo') {
       const cleanName = typeof name === 'string' ? name.trim().slice(0, 50) : '';
       if (!cleanName) {
+        if (isHtmlForm) {
+          return res.redirect(303, '/s/demo');
+        }
         return res.status(400).json({ error: 'Vui lòng nhập tên của bạn' });
       }
       const cleanStatus = ['going', 'coming_soon', 'suggest_change'].includes(status)
@@ -337,7 +386,7 @@ export function createApp(options = {}) {
         });
       }
 
-      if (!req.is('application/json') && req.accepts(['json', 'html']) === 'html') {
+      if (isHtmlForm) {
         return res.redirect(303, '/s/demo');
       }
       return res.status(200).json({
@@ -351,10 +400,14 @@ export function createApp(options = {}) {
     try {
       const updated = store.addParticipant(code, { name, status, note });
       if (!updated) {
+        if (isHtmlForm) {
+          const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
+          return res.status(404).type('html').send(renderNotFoundSharePage(code, baseUrl));
+        }
         return res.status(404).json({ error: 'Share code not found', code });
       }
 
-      if (!req.is('application/json') && req.accepts(['json', 'html']) === 'html') {
+      if (isHtmlForm) {
         return res.redirect(303, `/s/${encodeURIComponent(updated.shortCode)}`);
       }
 
@@ -366,6 +419,9 @@ export function createApp(options = {}) {
       });
     } catch (err) {
       if (err?.code === 'INVALID_NAME') {
+        if (isHtmlForm) {
+          return res.redirect(303, `/s/${encodeURIComponent(code)}`);
+        }
         return res.status(400).json({ error: 'Vui lòng nhập tên của bạn' });
       }
       throw err;

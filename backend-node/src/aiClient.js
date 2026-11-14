@@ -50,25 +50,33 @@ async function postJson(url, body, timeoutMs) {
   return res.json();
 }
 
+function resolveAiTimeoutMs(explicitTimeoutMs) {
+  const raw = explicitTimeoutMs ?? process.env.AI_TIMEOUT_MS;
+  const candidate =
+    raw !== undefined && raw !== null && String(raw).trim() !== '' ? Number(raw) : 10000;
+  return Number.isFinite(candidate) && candidate > 0 ? candidate : 10000;
+}
+
 /**
  * Forward itinerary generation request to FastAPI POST /ai/generate.
  */
-export async function callAiGenerate(aiServiceUrl, payload, { timeoutMs = 15000 } = {}) {
+export async function callAiGenerate(aiServiceUrl, payload, { timeoutMs } = {}) {
   const base = String(aiServiceUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-  return postJson(`${base}/ai/generate`, payload, timeoutMs);
+  return postJson(`${base}/ai/generate`, payload, resolveAiTimeoutMs(timeoutMs));
 }
 
 /**
  * Forward itinerary replan request to FastAPI POST /ai/replan
  * (retaining /ai/replan-stop retry if /ai/replan returns 404).
  */
-export async function callAiReplan(aiServiceUrl, payload, { timeoutMs = 15000 } = {}) {
+export async function callAiReplan(aiServiceUrl, payload, { timeoutMs } = {}) {
   const base = String(aiServiceUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  const effectiveTimeout = resolveAiTimeoutMs(timeoutMs);
   try {
-    return await postJson(`${base}/ai/replan`, payload, timeoutMs);
+    return await postJson(`${base}/ai/replan`, payload, effectiveTimeout);
   } catch (err) {
     if (err?.status === 404) {
-      return postJson(`${base}/ai/replan-stop`, payload, timeoutMs);
+      return postJson(`${base}/ai/replan-stop`, payload, effectiveTimeout);
     }
     throw err;
   }

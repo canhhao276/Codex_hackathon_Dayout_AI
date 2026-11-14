@@ -68,9 +68,16 @@ export function renderStatsDashboard({ stats, aiHealth, baseUrl }) {
       border-radius: 999px;
       font-size: 13px;
       font-weight: 700;
-      background: ${aiOnline ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.18)'};
-      border: 1px solid ${aiOnline ? '#10b981' : '#f59e0b'};
-      color: ${aiOnline ? '#34d399' : '#fbbf24'};
+    }
+    .status-pill.online {
+      background: rgba(16,185,129,0.16);
+      border: 1px solid #10b981;
+      color: #34d399;
+    }
+    .status-pill.offline {
+      background: rgba(245,158,11,0.18);
+      border: 1px solid #f59e0b;
+      color: #fbbf24;
     }
     .kpi-grid {
       display: grid;
@@ -134,7 +141,7 @@ export function renderStatsDashboard({ stats, aiHealth, baseUrl }) {
         <h1>Dayout AI — Live Traction &amp; System Telemetry</h1>
         <div class="subtitle">Tự động cập nhật mỗi 5 giây • Public URL: <code>${escapeHtml(cleanBase)}</code></div>
       </div>
-      <div class="status-pill" id="aiPill">
+      <div class="status-pill ${aiOnline ? 'online' : 'offline'}" id="aiPill">
         <span>●</span>
         <span id="aiText">${aiOnline ? `FastAPI AI Online (${escapeHtml(aiHealth?.latency_ms ?? 0)}ms)` : 'Smart Spatial Fallback Ready (FastAPI Offline)'}</span>
       </div>
@@ -225,6 +232,7 @@ export function renderStatsDashboard({ stats, aiHealth, baseUrl }) {
         document.getElementById('rOther').textContent = r.other ?? 0;
 
         if (data.ai_service) {
+          document.getElementById('aiPill').className = 'status-pill ' + (data.ai_service.online ? 'online' : 'offline');
           document.getElementById('aiText').textContent = data.ai_service.online
             ? 'FastAPI AI Online (' + (data.ai_service.latency_ms ?? 0) + 'ms)'
             : 'Smart Spatial Fallback Ready (FastAPI Offline)';

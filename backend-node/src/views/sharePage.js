@@ -128,8 +128,8 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>${escapeHtml(summary.title || 'Thẻ Chốt Kèo — Dayout AI')}</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'; if (window.__leafletMap) { window.__leafletMap.invalidateSize(); }" />
+  <noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /></noscript>
   <style>
     :root {
       --bg: #f8fafc;
@@ -219,6 +219,32 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
     #map {
       width: 100%;
       height: 235px;
+      position: relative;
+      background: #e2e8f0;
+    }
+    .map-status {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 18px;
+      color: #475569;
+      background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
+    }
+    .map-status-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 4px;
+    }
+    .map-status-sub {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.45;
+      max-width: 300px;
     }
     .hud-grid {
       display: grid;
@@ -309,13 +335,27 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       flex-wrap: wrap;
       align-items: center;
       gap: 6px;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
-    .pt-name { font-weight: 700; }
+    .pt-name {
+      font-weight: 700;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .pt-status { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
     .pt-status.going { background: #dcfce7; color: #166534; }
     .pt-status.soon { background: #dbeafe; color: #1e40af; }
     .pt-status.suggest { background: #fef3c7; color: #92400e; }
-    .pt-note { color: var(--muted); font-style: italic; }
+    .pt-note {
+      color: var(--muted);
+      font-style: italic;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .empty-pt { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
     .form-row {
       display: flex;
@@ -372,9 +412,10 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       margin-top: 8px;
       font-size: 12.5px;
       font-weight: 700;
-      color: #065f46;
       display: none;
     }
+    .feedback-msg.ok { color: #065f46; }
+    .feedback-msg.error { color: #b91c1c; }
     .stops-list {
       display: flex;
       flex-direction: column;
@@ -411,7 +452,7 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       justify-content: center;
       margin-top: 2px;
     }
-    .stop-meta { flex: 1; }
+    .stop-meta { flex: 1; min-width: 0; }
     .stop-time {
       font-size: 11.5px;
       color: var(--muted);
@@ -433,11 +474,17 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       margin: 0 0 3px;
       font-size: 15.5px;
       line-height: 1.3;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .addr {
       margin: 0;
       font-size: 12px;
       color: var(--muted);
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .stop-metrics {
       display: flex;
@@ -520,6 +567,18 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       margin: 10px auto;
       display: block;
     }
+    .qr-fallback {
+      display: none;
+      margin: 12px 0;
+      padding: 11px 12px;
+      border-radius: 12px;
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
     .modal-url {
       font-size: 11px;
       word-break: break-all;
@@ -546,7 +605,12 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
     </header>
 
     <section class="map-wrap">
-      <div id="map"></div>
+      <div id="map">
+        <div class="map-status" id="mapStatus">
+          <div class="map-status-title">🗺️ Đang tải bản đồ lộ trình...</div>
+          <div class="map-status-sub">Xem chi tiết các chặng ngay bên dưới</div>
+        </div>
+      </div>
     </section>
 
     <section class="hud-grid">
@@ -572,6 +636,7 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       <div class="pt-list" id="ptList">${participantsHtml}</div>
       <form class="form-row" id="joinForm" action="/api/v1/share/${encodeURIComponent(code)}/join" method="post">
         <input type="text" id="ptName" name="name" maxlength="50" placeholder="Tên của bạn (VD: Minh Anh)" required />
+        <input type="hidden" name="status" id="ptStatusInput" value="going" />
         <div class="status-chips">
           <button type="button" class="chip-opt active" data-val="going">✅ Chốt đi!</button>
           <button type="button" class="chip-opt" data-val="coming_soon">🛵 Đang qua</button>
@@ -595,7 +660,8 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
     <div class="modal-box">
       <h3 style="margin:0 0 4px;">Quét QR để tham gia kèo</h3>
       <p style="margin:0;font-size:12px;color:#64748b;">Đưa mã này cho bạn bè hoặc người dùng thử</p>
-      <img src="${escapeHtml(qrImgUrl)}" alt="QR Code Kèo Dayout AI" onerror="this.style.display='none'" />
+      <img id="qrImg" src="${escapeHtml(qrImgUrl)}" alt="QR Code Kèo Dayout AI" onerror="this.style.display='none'; var fb=document.getElementById('qrFallback'); if(fb) fb.style.display='block';" />
+      <div class="qr-fallback" id="qrFallback">Không tải được ảnh QR trên mạng hiện tại — hãy bấm Sao chép link để gửi qua Zalo</div>
       <div class="modal-url">${escapeHtml(shareUrl)}</div>
       <button type="button" class="btn-primary" id="closeQrBtn">Đóng</button>
     </div>
@@ -606,60 +672,140 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
     const SHARE_CODE = ${safeJsonForScript(code)};
     const SHARE_URL = ${safeJsonForScript(shareUrl)};
 
+    let mapInitialized = false;
+    let leafletTimeoutId = null;
+
+    function showMapFallback(force) {
+      if (leafletTimeoutId) {
+        clearTimeout(leafletTimeoutId);
+        leafletTimeoutId = null;
+      }
+      if (!force && (mapInitialized || typeof L !== 'undefined')) return;
+      const mapEl = document.getElementById('map');
+      if (!mapEl) return;
+      let statusEl = document.getElementById('mapStatus');
+      if (!statusEl) {
+        mapEl.innerHTML = '<div class="map-status" id="mapStatus"></div>';
+        statusEl = document.getElementById('mapStatus');
+      }
+      statusEl.innerHTML =
+        '<div class="map-status-title">🗺️ Không tải được bản đồ trực tuyến</div>' +
+        '<div class="map-status-sub">Mạng hiện tại có thể đang chậm hoặc chặn bản đồ — xem chi tiết từng chặng ngay bên dưới và chốt kèo bình thường nhé!</div>';
+    }
+
     // Initialize free Leaflet + CartoDB Voyager map (no API key needed)
-    (function initMap() {
-      if (typeof L === 'undefined') return;
-      const defaultCenter = [21.0012, 105.8035];
-      const map = L.map('map', { zoomControl: true }).setView(defaultCenter, 14);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        maxZoom: 19
-      }).addTo(map);
-
-      const markersByOrder = {};
-      const boundsPts = [];
-
-      if (Array.isArray(MAP_DATA.polyline) && MAP_DATA.polyline.length >= 2) {
-        L.polyline(MAP_DATA.polyline, {
-          color: '#059669',
-          weight: 4,
-          opacity: 0.85
-        }).addTo(map);
-        MAP_DATA.polyline.forEach((pt) => boundsPts.push(pt));
+    function initMap() {
+      if (leafletTimeoutId) {
+        clearTimeout(leafletTimeoutId);
+        leafletTimeoutId = null;
       }
+      if (mapInitialized) return;
+      if (typeof L === 'undefined') {
+        showMapFallback(false);
+        return;
+      }
+      try {
+        const mapEl = document.getElementById('map');
+        if (!mapEl) return;
+        mapEl.innerHTML = '';
+        mapInitialized = true;
 
-      (MAP_DATA.stops || []).forEach((stop) => {
-        const icon = L.divIcon({
-          className: '',
-          html: '<div class="custom-pin">' + Number(stop.order) + '</div>',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14]
+        const defaultCenter = [21.0012, 105.8035];
+        const map = L.map('map', { zoomControl: true }).setView(defaultCenter, 14);
+        window.__leafletMap = map;
+
+        const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          maxZoom: 19
         });
-        const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(map);
-        marker.bindPopup(
-          '<strong>' + stop.order + '. ' + escapeClient(stop.name) + '</strong><br/>' +
-          escapeClient(stop.time) + ' • ' + Number(stop.cost).toLocaleString('vi-VN') + 'đ • ' + Number(stop.kcal) + ' kcal'
-        );
-        markersByOrder[stop.order] = marker;
-        boundsPts.push([stop.lat, stop.lng]);
-      });
-
-      if (boundsPts.length > 0) {
-        map.fitBounds(boundsPts, { padding: [26, 26] });
-      }
-
-      document.querySelectorAll('.stop-card').forEach((card) => {
-        card.addEventListener('click', () => {
-          const lat = Number(card.getAttribute('data-lat'));
-          const lng = Number(card.getAttribute('data-lng'));
-          const order = Number(card.getAttribute('data-order'));
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            map.flyTo([lat, lng], 16, { duration: 0.6 });
-            if (markersByOrder[order]) markersByOrder[order].openPopup();
+        let consecutiveTileErrors = 0;
+        let switchedToOsm = false;
+        cartoLayer.on('tileload', () => {
+          consecutiveTileErrors = 0;
+        });
+        cartoLayer.on('tileerror', () => {
+          if (switchedToOsm) return;
+          consecutiveTileErrors += 1;
+          if (consecutiveTileErrors >= 3) {
+            switchedToOsm = true;
+            if (map.hasLayer(cartoLayer)) {
+              map.removeLayer(cartoLayer);
+            }
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; OpenStreetMap contributors',
+              maxZoom: 19
+            }).addTo(map);
           }
         });
-      });
-    })();
+        cartoLayer.addTo(map);
+
+        const markersByOrder = {};
+        const boundsPts = [];
+
+        if (Array.isArray(MAP_DATA.polyline) && MAP_DATA.polyline.length >= 2) {
+          L.polyline(MAP_DATA.polyline, {
+            color: '#059669',
+            weight: 4,
+            opacity: 0.85
+          }).addTo(map);
+          MAP_DATA.polyline.forEach((pt) => boundsPts.push(pt));
+        }
+
+        (MAP_DATA.stops || []).forEach((stop) => {
+          const lat = Number(stop.lat);
+          const lng = Number(stop.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+          const icon = L.divIcon({
+            className: '',
+            html: '<div class="custom-pin">' + Number(stop.order) + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+          const marker = L.marker([lat, lng], { icon }).addTo(map);
+          marker.bindPopup(
+            '<strong>' + Number(stop.order) + '. ' + escapeClient(stop.name) + '</strong><br/>' +
+            escapeClient(stop.time) + ' • ' + Number(stop.cost).toLocaleString('vi-VN') + 'đ • ' + Number(stop.kcal) + ' kcal'
+          );
+          markersByOrder[stop.order] = marker;
+          boundsPts.push([lat, lng]);
+        });
+
+        if (boundsPts.length > 0) {
+          map.fitBounds(boundsPts, { padding: [26, 26] });
+        }
+
+        document.querySelectorAll('.stop-card').forEach((card) => {
+          card.addEventListener('click', () => {
+            const lat = Number(card.getAttribute('data-lat'));
+            const lng = Number(card.getAttribute('data-lng'));
+            const order = Number(card.getAttribute('data-order'));
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              map.flyTo([lat, lng], 16, { duration: 0.6 });
+              if (markersByOrder[order]) markersByOrder[order].openPopup();
+            }
+          });
+        });
+      } catch {
+        mapInitialized = false;
+        showMapFallback(true);
+      }
+    }
+
+    if (typeof L !== 'undefined') {
+      initMap();
+    } else {
+      leafletTimeoutId = setTimeout(() => {
+        showMapFallback(false);
+      }, 6000);
+      const leafletScript = document.createElement('script');
+      leafletScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      leafletScript.async = true;
+      leafletScript.onload = initMap;
+      leafletScript.onerror = () => {
+        showMapFallback(true);
+      };
+      document.body.appendChild(leafletScript);
+    }
 
     function escapeClient(str) {
       return String(str || '')
@@ -669,17 +815,64 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
         .replace(/"/g, '&quot;');
     }
 
+    async function copyTextWithFallback(text) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          // Fall through to execCommand fallback
+        }
+      }
+      let textarea = null;
+      try {
+        textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.left = '-9999px';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        if (typeof textarea.setSelectionRange === 'function') {
+          textarea.setSelectionRange(0, text.length);
+        }
+        return Boolean(document.execCommand('copy'));
+      } catch {
+        return false;
+      } finally {
+        if (textarea && textarea.parentNode) {
+          textarea.parentNode.removeChild(textarea);
+        }
+      }
+    }
+
     // Copy link & QR modal
     const copyBtn = document.getElementById('copyBtn');
     copyBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(SHARE_URL);
+      const copied = await copyTextWithFallback(SHARE_URL);
+      if (copied) {
         copyBtn.textContent = '✅ Đã sao chép link!';
         setTimeout(() => { copyBtn.textContent = '📋 Sao chép link'; }, 2000);
-      } catch {
+      } else {
         prompt('Sao chép đường dẫn kèo:', SHARE_URL);
       }
     });
+
+    const qrImg = document.getElementById('qrImg');
+    const qrFallback = document.getElementById('qrFallback');
+    if (qrImg && qrFallback) {
+      const showQrFallback = () => {
+        qrImg.style.display = 'none';
+        qrFallback.style.display = 'block';
+      };
+      qrImg.addEventListener('error', showQrFallback);
+      if (qrImg.complete && qrImg.naturalWidth === 0) {
+        showQrFallback();
+      }
+    }
 
     const qrModal = document.getElementById('qrModal');
     document.getElementById('qrBtn').addEventListener('click', () => qrModal.classList.add('open'));
@@ -690,11 +883,13 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
 
     // Interactive RSVP join flow
     let selectedStatus = 'going';
+    const ptStatusInput = document.getElementById('ptStatusInput');
     document.querySelectorAll('.chip-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.chip-opt').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         selectedStatus = btn.getAttribute('data-val') || 'going';
+        if (ptStatusInput) ptStatusInput.value = selectedStatus;
       });
     });
 
@@ -711,8 +906,16 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
       const submitBtn = document.getElementById('submitBtn');
       const feedbackMsg = document.getElementById('feedbackMsg');
       const name = nameInput.value.trim();
-      if (!name) return;
+      if (!name) {
+        feedbackMsg.textContent = '⚠️ Vui lòng nhập tên của bạn';
+        feedbackMsg.className = 'feedback-msg error';
+        feedbackMsg.style.display = 'block';
+        nameInput.focus();
+        return;
+      }
 
+      feedbackMsg.style.display = 'none';
+      feedbackMsg.className = 'feedback-msg';
       submitBtn.disabled = true;
       submitBtn.textContent = 'Đang lưu...';
       try {
@@ -739,9 +942,11 @@ export function renderSharePage({ record, itinerary, baseUrl }) {
         nameInput.value = '';
         noteInput.value = '';
         feedbackMsg.textContent = '🎉 Đã chốt tham gia thành công!';
+        feedbackMsg.className = 'feedback-msg ok';
         feedbackMsg.style.display = 'block';
       } catch (err) {
         feedbackMsg.textContent = '⚠️ ' + (err.message || 'Có lỗi xảy ra');
+        feedbackMsg.className = 'feedback-msg error';
         feedbackMsg.style.display = 'block';
       } finally {
         submitBtn.disabled = false;
