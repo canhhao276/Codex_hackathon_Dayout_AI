@@ -16,6 +16,10 @@ import {
   BUDGET_MIN,
   BUDGET_PRESETS,
   BUDGET_STEP,
+  DURATION_DEFAULT,
+  DURATION_MAX,
+  DURATION_MIN,
+  EXTRA_VIBES,
   NOTE_SUGGESTIONS,
   NUTRITION_OPTIONS,
   QUICK_AREAS,
@@ -23,7 +27,7 @@ import {
   VENUE_ORIGIN,
   VIBE_OPTIONS,
 } from '../constants';
-import { formatVndShort, resolveTimeWindow } from '../format';
+import { formatDuration, formatVndShort, minToHm, resolveTimeWindow, startKeyToMin } from '../format';
 import type { BriefDraft } from '../storage';
 import { colors, radius, shadow } from '../theme';
 import type { GenerateRequest, NutritionGoal, Vibe } from '../types';
@@ -37,7 +41,11 @@ export const DEFAULT_DRAFT: BriefDraft = {
   nutrition: 'eat_clean',
   startKey: '14:00',
   note: 'Đi hẹn hò cuối tuần, thích không gian thoáng, ít dầu mỡ',
+  extraVibes: [],
+  durationMin: DURATION_DEFAULT,
 };
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 interface Props {
   initialDraft: BriefDraft;
@@ -55,8 +63,14 @@ export function draftToRequest(d: BriefDraft): GenerateRequest {
     people_count: d.people,
     vibes: d.vibes as Vibe[],
     nutrition_goal: d.nutrition as NutritionGoal,
-    time_window: resolveTimeWindow(d.startKey),
-    prompt_note: d.note.trim(),
+    time_window: resolveTimeWindow(d.startKey, d.durationMin),
+    prompt_note: [
+      d.note.trim(),
+      d.extraVibes.length ? `Sở thích thêm: ${d.extraVibes.join(', ')}` : '',
+      d.people > 4 ? `Nhóm đông ${d.people} người, cần chỗ rộng` : '',
+    ]
+      .filter(Boolean)
+      .join('. '),
   };
 }
 
@@ -75,12 +89,38 @@ export default function BriefScreen({
 
   const update = (patch: Partial<BriefDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
+  const [budgetText, setBudgetText] = useState('');
+  const [customVibe, setCustomVibe] = useState('');
+
   const toggleVibe = (v: Vibe) =>
     setDraft((d) => {
       const has = d.vibes.includes(v);
       const next = has ? d.vibes.filter((x) => x !== v) : [...d.vibes, v];
       return { ...d, vibes: next.length ? next : d.vibes };
     });
+
+  const toggleExtra = (v: string) =>
+    setDraft((d) => ({
+      ...d,
+      extraVibes: d.extraVibes.includes(v) ? d.extraVibes.filter((x) => x !== v) : [...d.extraVibes, v],
+    }));
+
+  const addCustomVibe = () => {
+    const v = customVibe.trim().slice(0, 40);
+    if (!v) return;
+    setDraft((d) => (d.extraVibes.includes(v) ? d : { ...d, extraVibes: [...d.extraVibes, v] }));
+    setCustomVibe('');
+  };
+
+  // Ô nhập ngân sách tự do, tính theo nghìn đồng (VD gõ 450 → 450k).
+  const applyBudgetText = () => {
+    const k = parseInt(budgetText.replace(/\D/g, ''), 10);
+    if (Number.isFinite(k) && k > 0) update({ budget: clamp(k * 1000, BUDGET_MIN, BUDGET_MAX) });
+    setBudgetText('');
+  };
+
+  const shiftStart = (delta: number) =>
+    update({ startKey: minToHm(clamp(startKeyToMin(draft.startKey) + delta, 6 * 60, 22 * 60)) });
 
   const locateMe = async () => {
     setLocating(true);
@@ -130,7 +170,8 @@ export default function BriefScreen({
   };
 
   const budgetLabel = formatVndShort(draft.budget);
-  const tw = resolveTimeWindow(draft.startKey);
+  const tw = resolveTimeWindow(draft.startKey, draft.durationMin);
+  const isPresetStart = START_TIME_OPTIONS.some((t) => t.key === draft.startKey);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -223,6 +264,21 @@ export default function BriefScreen({
               />
             ))}
           </View>
+          <View style={styles.inlineRow}>
+            <TextInput
+              value={budgetText}
+              onChangeText={setBudgetText}
+              onSubmitEditing={applyBudgetText}
+              onBlur={applyBudgetText}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              placeholder="Nhập số khác (nghìn đồng), VD 450"
+              placeholderTextColor={colors.textMuted}
+              style={[styles.inlineInput, { flex: 1 }]}
+              maxLength={5}
+            />
+            <Text style={styles.inlineSuffix}>k</Text>
+          </View>
 
           <View style={[styles.rowBetween, { marginTop: 10 }]}>
             <Text style={styles.cardTitle}>👥 Số người</Text>
@@ -231,7 +287,7 @@ export default function BriefScreen({
                 <Text style={styles.stepText}>−</Text>
               </Pressable>
               <Text style={styles.peopleValue}>{draft.people}</Text>
-              <Pressable style={styles.stepBtn} onPress={() => update({ people: Math.min(12, draft.people + 1) })}>
+              <Pressable style={styles.stepBtn} onPress={() => update({ people: Math.min(20, draft.people + 1) })}>
                 <Text style={styles.stepText}>+</Text>
               </Pressable>
             </View>
@@ -251,6 +307,33 @@ export default function BriefScreen({
                 onPress={() => toggleVibe(v.key)}
               />
             ))}
+          </View>
+          <Text style={[styles.hint, { marginTop: 4 }]}>Thêm sở thích (AI đọc và cân nhắc):</Text>
+          <View style={styles.chips}>
+            {[...EXTRA_VIBES, ...draft.extraVibes.filter((v) => !EXTRA_VIBES.includes(v))].map((v) => (
+              <Chip
+                key={v}
+                small
+                label={v}
+                selected={draft.extraVibes.includes(v)}
+                onPress={() => toggleExtra(v)}
+              />
+            ))}
+          </View>
+          <View style={styles.inlineRow}>
+            <TextInput
+              value={customVibe}
+              onChangeText={setCustomVibe}
+              onSubmitEditing={addCustomVibe}
+              returnKeyType="done"
+              placeholder="Tự nhập sở thích, VD: Xem phim, Rooftop"
+              placeholderTextColor={colors.textMuted}
+              style={[styles.inlineInput, { flex: 1 }]}
+              maxLength={40}
+            />
+            <Pressable style={styles.addBtn} onPress={addCustomVibe}>
+              <Text style={styles.addBtnText}>＋ Thêm</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -290,6 +373,36 @@ export default function BriefScreen({
               />
             ))}
           </View>
+          <View style={[styles.rowBetween, { marginTop: 4 }]}>
+            <Text style={styles.subLabel}>Giờ bắt đầu{isPresetStart ? '' : ' (tuỳ chỉnh)'}</Text>
+            <View style={styles.stepperSmall}>
+              <Pressable style={styles.stepBtnSm} onPress={() => shiftStart(-30)}>
+                <Text style={styles.stepText}>−</Text>
+              </Pressable>
+              <Text style={styles.timeValue}>{tw.start}</Text>
+              <Pressable style={styles.stepBtnSm} onPress={() => shiftStart(30)}>
+                <Text style={styles.stepText}>+</Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.subLabel}>Đi trong bao lâu</Text>
+            <View style={styles.stepperSmall}>
+              <Pressable
+                style={styles.stepBtnSm}
+                onPress={() => update({ durationMin: clamp(draft.durationMin - 60, DURATION_MIN, DURATION_MAX) })}
+              >
+                <Text style={styles.stepText}>−</Text>
+              </Pressable>
+              <Text style={styles.timeValue}>{formatDuration(draft.durationMin)}</Text>
+              <Pressable
+                style={styles.stepBtnSm}
+                onPress={() => update({ durationMin: clamp(draft.durationMin + 60, DURATION_MIN, DURATION_MAX) })}
+              >
+                <Text style={styles.stepText}>+</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
 
         {/* Ghi chú */}
@@ -297,7 +410,7 @@ export default function BriefScreen({
           <Text style={styles.cardTitle}>📝 Ghi chú nhanh (tuỳ chọn)</Text>
           <TextInput
             value={draft.note}
-            onChangeText={(t) => update({ note: t.slice(0, 200) })}
+            onChangeText={(t) => update({ note: t.slice(0, 300) })}
             placeholder="VD: Đi hẹn hò, thích không gian thoáng, ít dầu mỡ"
             placeholderTextColor={colors.textMuted}
             style={styles.note}
@@ -385,6 +498,38 @@ const styles = StyleSheet.create({
   track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.border, marginHorizontal: 12, overflow: 'hidden' },
   trackFill: { height: 8, backgroundColor: colors.accent, borderRadius: 4 },
   peopleValue: { fontSize: 20, fontWeight: '900', color: colors.text, width: 44, textAlign: 'center' },
+  stepBtnSm: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeValue: { fontSize: 16, fontWeight: '900', color: colors.text, minWidth: 76, textAlign: 'center' },
+  subLabel: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 },
+  inlineRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  inlineInput: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  inlineSuffix: { fontSize: 16, fontWeight: '800', color: colors.textMuted, marginLeft: 8 },
+  addBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 14,
+    height: 42,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   note: {
     minHeight: 64,
     borderWidth: 1.5,

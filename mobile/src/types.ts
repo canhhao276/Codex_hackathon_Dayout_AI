@@ -55,6 +55,8 @@ export interface Stop {
   ai_reason: string;
   distance_to_next_km: number | null;
   travel_to_next_minutes: number | null;
+  /** TUỲ CHỌN (ngoài contract khoá cứng): ảnh đại diện địa điểm, app hiển thị nếu backend gửi. */
+  image_url?: string;
 }
 
 export interface ItineraryResponse {

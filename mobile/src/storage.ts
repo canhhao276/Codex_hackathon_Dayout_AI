@@ -11,6 +11,9 @@ export interface BriefDraft {
   nutrition: string;
   startKey: string;
   note: string;
+  /** Sở thích ngoài 5 vibe chuẩn → gửi qua prompt_note. */
+  extraVibes: string[];
+  durationMin: number;
 }
 
 async function readJson<T>(key: string): Promise<T | null> {

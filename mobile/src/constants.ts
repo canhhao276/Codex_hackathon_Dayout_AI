@@ -47,9 +47,9 @@ export const NUTRITION_OPTIONS: { key: NutritionGoal; label: string; emoji: stri
   { key: 'low_sugar', label: 'Ít đường', emoji: '🍃' },
 ];
 
-export const BUDGET_PRESETS = [200000, 300000, 350000, 500000, 800000];
-export const BUDGET_MIN = 200000;
-export const BUDGET_MAX = 800000;
+export const BUDGET_PRESETS = [150000, 250000, 350000, 500000, 800000, 1200000];
+export const BUDGET_MIN = 50000; // backend-node chặn dưới 50k
+export const BUDGET_MAX = 3000000;
 export const BUDGET_STEP = 50000;
 
 export const START_TIME_OPTIONS: { key: string; label: string }[] = [
@@ -59,11 +59,32 @@ export const START_TIME_OPTIONS: { key: string; label: string }[] = [
   { key: '18:00', label: 'Tối 18:00' },
 ];
 
+export const DURATION_MIN = 120;
+export const DURATION_MAX = 14 * 60;
+export const DURATION_DEFAULT = 7 * 60;
+
+// Sở thích mở rộng: FastAPI chỉ chấm điểm theo 5 vibe chuẩn ở trên, nên các sở thích này
+// (và sở thích người dùng tự gõ) được gửi qua prompt_note để OpenAI đọc và cân nhắc.
+export const EXTRA_VIBES = [
+  'Lãng mạn',
+  'Thiên nhiên / Công viên',
+  'Nghệ thuật / Triển lãm',
+  'Âm nhạc / Acoustic',
+  'Mua sắm',
+  'Thể thao / Vận động',
+  'Hợp trẻ em',
+  'Yên tĩnh, ít người',
+];
+
 export const NOTE_SUGGESTIONS = [
   'Đi hẹn hò cuối tuần',
   'Nhóm bạn thân',
   'Ít dầu mỡ',
   'Không gian thoáng',
+  'Ăn chay',
+  'Không ăn cay',
+  'Dị ứng hải sản',
+  'Có chỗ gửi xe máy',
 ];
 
 export const STORAGE_KEYS = {

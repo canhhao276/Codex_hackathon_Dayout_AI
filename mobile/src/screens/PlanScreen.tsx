@@ -1,6 +1,8 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
+  Linking,
   Pressable,
   ScrollView,
   type ScrollViewInstance,
@@ -62,7 +64,26 @@ export default function PlanScreen({
   const cost = summary.total_cost_per_person_vnd;
   const ratio = budget > 0 ? Math.min(cost / budget, 1.2) : 0;
   const overBudget = budget > 0 && cost > budget;
-  const mapHeight = Math.round(Math.max(220, Math.min(height * 0.36, 380)));
+  const mapHeight = Math.round(Math.max(200, Math.min(height * 0.3, 320)));
+
+  // Mở Google Maps (app hoặc web) — miễn phí, không cần API key. Người dùng xem được
+  // ảnh thật, đánh giá, giờ mở cửa của quán, và chỉ đường cả tuyến bằng xe máy.
+  const openPlaceInGoogleMaps = (s: Stop) => {
+    const q = encodeURIComponent(`${s.name}, ${s.address || `${s.lat},${s.lng}`}`);
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`).catch(() => undefined);
+  };
+  const openRouteInGoogleMaps = () => {
+    const pts = stops.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+    if (!pts.length) return;
+    const ll = (s: { lat: number; lng: number }) => `${s.lat},${s.lng}`;
+    const dest = pts[pts.length - 1];
+    const waypoints = pts.slice(0, -1).map(ll).join('|');
+    const url =
+      `https://www.google.com/maps/dir/?api=1&origin=${ll(request.origin)}&destination=${ll(dest)}` +
+      (waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : '') +
+      '&travelmode=two-wheeler';
+    Linking.openURL(url).catch(() => undefined);
+  };
 
   const onCardPress = (s: Stop) => {
     setActiveOrder(s.order);
@@ -142,48 +163,59 @@ export default function PlanScreen({
         <Pressable style={styles.fitBtn} onPress={() => mapRef.current?.fitAll()}>
           <Text style={styles.fitText}>⤢ Toàn tuyến</Text>
         </Pressable>
+        <Pressable style={styles.gmapsBtn} onPress={openRouteInGoogleMaps}>
+          <Text style={styles.fitText}>🧭 Chỉ đường Google Maps</Text>
+        </Pressable>
       </View>
 
       {/* HUD */}
       <View style={styles.hud}>
-        <View style={styles.hudCol}>
-          <Text style={styles.hudLabel}>💰 Chi phí / người</Text>
-          <View style={styles.hudRow}>
-            <Text style={[styles.hudValue, overBudget && { color: colors.danger }]}>
-              {formatVndShort(cost)}
-            </Text>
-            <Text style={styles.hudOf}> / {formatVndShort(budget)}</Text>
+        <View style={styles.hudTop}>
+          <View style={styles.hudCol}>
+            <Text style={styles.hudLabel}>💰 Chi phí/người</Text>
+            <View style={styles.hudRow}>
+              <Text style={[styles.hudValue, overBudget && { color: colors.danger }]}>
+                {formatVndShort(cost)}
+              </Text>
+              <Text style={styles.hudOf}>/{formatVndShort(budget)}</Text>
+            </View>
+            <Delta now={cost} prev={prevSummary?.total_cost_per_person_vnd} unit="vnd" />
           </View>
-          <View style={styles.bar}>
-            <View
-              style={[
-                styles.barFill,
-                {
-                  width: `${Math.min(ratio, 1) * 100}%`,
-                  backgroundColor: overBudget ? colors.danger : colors.success,
-                },
-              ]}
-            />
-          </View>
-          <Delta now={cost} prev={prevSummary?.total_cost_per_person_vnd} unit="vnd" />
-        </View>
-        <View style={styles.hudDivider} />
-        <View style={[styles.hudCol, { flex: 1.25 }]}>
-          <Text style={styles.hudLabel}>🔥 Năng lượng</Text>
-          <View style={styles.hudRow}>
-            <Text style={styles.hudValue}>~{Math.round(summary.total_calories_kcal)}</Text>
-            <Text style={styles.hudOf}> kcal</Text>
+          <View style={styles.hudDivider} />
+          <View style={styles.hudCol}>
+            <Text style={styles.hudLabel}>🔥 Năng lượng</Text>
+            <View style={styles.hudRow}>
+              <Text style={styles.hudValue}>{Math.round(summary.total_calories_kcal)}</Text>
+              <Text style={styles.hudOf}> kcal</Text>
+            </View>
             <Delta now={summary.total_calories_kcal} prev={prevSummary?.total_calories_kcal} unit="kcal" />
           </View>
-          {!!summary.nutrition_badge && (
-            <Text style={styles.badge} numberOfLines={2}>
-              {summary.nutrition_badge}
-            </Text>
-          )}
-          <Text style={styles.hudMini}>
-            🛵 {formatKm(summary.total_distance_km)} • {Math.round(summary.total_travel_minutes)} phút di chuyển
-          </Text>
+          <View style={styles.hudDivider} />
+          <View style={styles.hudCol}>
+            <Text style={styles.hudLabel}>🛵 Di chuyển</Text>
+            <View style={styles.hudRow}>
+              <Text style={styles.hudValue}>{formatKm(summary.total_distance_km).replace(' km', '')}</Text>
+              <Text style={styles.hudOf}> km</Text>
+            </View>
+            <Text style={styles.hudMini}>~{Math.round(summary.total_travel_minutes)} phút</Text>
+          </View>
         </View>
+        <View style={styles.bar}>
+          <View
+            style={[
+              styles.barFill,
+              {
+                width: `${Math.min(ratio, 1) * 100}%`,
+                backgroundColor: overBudget ? colors.danger : colors.success,
+              },
+            ]}
+          />
+        </View>
+        {!!summary.nutrition_badge && (
+          <Text style={styles.badge} numberOfLines={1}>
+            ✅ {summary.nutrition_badge}
+          </Text>
+        )}
       </View>
 
       <ScrollView
@@ -241,6 +273,9 @@ export default function PlanScreen({
                     </View>
                   )}
                 </View>
+                {!!s.image_url && (
+                  <Image source={{ uri: s.image_url }} style={styles.photo} resizeMode="cover" />
+                )}
                 {!!s.address && (
                   <Text style={styles.address} numberOfLines={2}>
                     📍 {s.address}
@@ -269,13 +304,18 @@ export default function PlanScreen({
                     <Text style={styles.reasonText}>🤖 {s.ai_reason}</Text>
                   </View>
                 )}
-                <Pressable
-                  style={styles.swap}
-                  onPress={() => onReplan('crowded', s.order, budget)}
-                  hitSlop={6}
-                >
-                  <Text style={styles.swapText}>🔄 Đổi quán này</Text>
-                </Pressable>
+                <View style={styles.cardActions}>
+                  <Pressable style={styles.gmapsCardBtn} onPress={() => openPlaceInGoogleMaps(s)} hitSlop={6}>
+                    <Text style={styles.gmapsCardText}>📷 Ảnh & đánh giá</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.swap}
+                    onPress={() => onReplan('crowded', s.order, budget)}
+                    hitSlop={6}
+                  >
+                    <Text style={styles.swapText}>🔄 Đổi quán này</Text>
+                  </Pressable>
+                </View>
               </Pressable>
               {i < stops.length - 1 && (
                 <View style={styles.connector}>
@@ -345,31 +385,33 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: -18,
     borderRadius: radius.lg,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     ...shadow,
     elevation: 6,
   },
+  hudTop: { flexDirection: 'row' },
   hudCol: { flex: 1 },
-  hudDivider: { width: 1, backgroundColor: colors.border, marginHorizontal: 10 },
-  hudLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '700', textTransform: 'uppercase' },
-  hudRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2 },
-  hudValue: { fontSize: 22, fontWeight: '900', color: colors.text },
-  hudOf: { fontSize: 13, color: colors.textMuted, fontWeight: '700' },
-  bar: { height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: 6, overflow: 'hidden' },
-  barFill: { height: 6, borderRadius: 3 },
-  delta: { fontSize: 11, fontWeight: '800', marginTop: 3, marginLeft: 4 },
+  hudDivider: { width: 1, backgroundColor: colors.border, marginHorizontal: 8 },
+  hudLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '800' },
+  hudRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: 1 },
+  hudValue: { fontSize: 18, fontWeight: '900', color: colors.text },
+  hudOf: { fontSize: 11, color: colors.textMuted, fontWeight: '700' },
+  bar: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 8, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2 },
+  delta: { fontSize: 10, fontWeight: '800', marginTop: 1 },
   badge: {
-    marginTop: 4,
+    marginTop: 6,
     fontSize: 11,
     color: colors.success,
     fontWeight: '800',
     backgroundColor: colors.successSoft,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
     alignSelf: 'flex-start',
   },
-  hudMini: { fontSize: 11, color: colors.textMuted, marginTop: 4, fontWeight: '600' },
+  hudMini: { fontSize: 10, color: colors.textMuted, marginTop: 1, fontWeight: '700' },
   sectionTitle: { fontSize: 14, fontWeight: '900', color: colors.text, marginTop: 14, marginBottom: 8 },
   quick: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: radius.md, marginRight: 8 },
   quickText: { fontSize: 13, fontWeight: '800' },
@@ -414,9 +456,29 @@ const styles = StyleSheet.create({
   metricNote: { fontSize: 12, fontWeight: '600', color: colors.success, flexShrink: 1 },
   reason: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 10, marginTop: 10 },
   reasonText: { fontSize: 13, color: colors.text, lineHeight: 18 },
+  photo: { width: '100%', height: 140, borderRadius: radius.md, marginTop: 10, backgroundColor: colors.border },
+  cardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 },
+  gmapsCardBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginRight: 8,
+  },
+  gmapsCardText: { fontSize: 13, fontWeight: '800', color: colors.text },
+  gmapsBtn: {
+    position: 'absolute',
+    right: 10,
+    bottom: 28,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    ...shadow,
+  },
   swap: {
-    alignSelf: 'flex-end',
-    marginTop: 10,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.pill,

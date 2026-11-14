@@ -63,23 +63,23 @@ const MAP_HTML = `<!DOCTYPE html>
       return;
     }
     map = L.map('map', { zoomControl: false, attributionControl: true }).setView([21.0012, 105.8035], 14);
-    // CartoDB nay trả ảnh "API KEY REQUIRED" (HTTP 200) nên không dùng được.
-    // Chính: OSM. Dự phòng khi OSM lỗi/chặn: Esri World Street Map (không cần key).
-    var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    // CartoDB nay trả ảnh "API KEY REQUIRED"; OSM chặn tile trong WebView Android (đã thấy trên máy thật).
+    // Chính: Esri World Street Map (không cần key). Dự phòng: OSM.
+    var primary = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, attribution: '&copy; Esri, OpenStreetMap'
     });
     var errors = 0, switched = false;
-    osm.on('tileerror', function () {
+    primary.on('tileerror', function () {
       errors++;
       if (errors > 3 && !switched) {
         switched = true;
-        map.removeLayer(osm);
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          maxZoom: 19, attribution: '&copy; Esri, OpenStreetMap'
+        map.removeLayer(primary);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19, attribution: '&copy; OpenStreetMap'
         }).addTo(map);
       }
     });
-    osm.addTo(map);
+    primary.addTo(map);
     L.control.zoom({ position: 'topright' }).addTo(map);
     layer = L.layerGroup().addTo(map);
     window.__ready = true;

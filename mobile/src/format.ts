@@ -21,20 +21,31 @@ export function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-/** "Ngay bây giờ" → làm tròn lên mốc 15 phút kế tiếp. */
-export function resolveTimeWindow(startKey: string): { start: string; end: string } {
-  let startMin: number;
+export function minToHm(x: number): string {
+  return `${pad2(Math.floor(x / 60))}:${pad2(x % 60)}`;
+}
+
+/** "now" → làm tròn lên mốc 15 phút kế tiếp; còn lại là "HH:MM". */
+export function startKeyToMin(startKey: string): number {
   if (startKey === 'now') {
     const d = new Date();
-    startMin = Math.ceil((d.getHours() * 60 + d.getMinutes()) / 15) * 15;
-  } else {
-    const [h, m] = startKey.split(':').map(Number);
-    startMin = h * 60 + m;
+    return Math.min(Math.ceil((d.getHours() * 60 + d.getMinutes()) / 15) * 15, 22 * 60);
   }
-  startMin = Math.min(startMin, 22 * 60);
-  const endMin = Math.min(startMin + 7 * 60, 23 * 60 + 30);
-  const toStr = (x: number) => `${pad2(Math.floor(x / 60))}:${pad2(x % 60)}`;
-  return { start: toStr(startMin), end: toStr(endMin) };
+  const [h, m] = startKey.split(':').map(Number);
+  const v = (Number.isFinite(h) ? h : 14) * 60 + (Number.isFinite(m) ? m : 0);
+  return Math.max(0, Math.min(v, 22 * 60));
+}
+
+export function resolveTimeWindow(startKey: string, durationMin = 7 * 60): { start: string; end: string } {
+  const startMin = startKeyToMin(startKey);
+  const endMin = Math.min(startMin + Math.max(60, durationMin), 23 * 60 + 30);
+  return { start: minToHm(startMin), end: minToHm(endMin) };
+}
+
+export function formatDuration(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h${pad2(m)}` : `${h} tiếng`;
 }
 
 export function normalizeBaseUrl(raw: string): string {

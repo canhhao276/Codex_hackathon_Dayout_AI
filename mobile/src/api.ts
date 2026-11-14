@@ -96,6 +96,7 @@ export function normalizeItinerary(raw: any): ItineraryResponse {
       ai_reason: str(s.ai_reason),
       distance_to_next_km: s.distance_to_next_km == null ? null : num(s.distance_to_next_km),
       travel_to_next_minutes: s.travel_to_next_minutes == null ? null : num(s.travel_to_next_minutes),
+      ...(typeof s.image_url === 'string' && /^https:\/\//.test(s.image_url) ? { image_url: s.image_url } : {}),
     }))
     .sort((a: Stop, b: Stop) => a.order - b.order);
 
