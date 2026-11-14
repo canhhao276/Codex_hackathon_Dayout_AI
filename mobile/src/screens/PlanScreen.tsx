@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LeafletMap, { type LeafletMapHandle } from '../components/LeafletMap';
+import PlaceReviews from '../components/PlaceReviews';
 import { CATEGORY_META, type IconName } from '../constants';
 import { formatKm, formatVndShort, prettyNutrition } from '../format';
 import { colors, radius, shadow, type } from '../theme';
@@ -34,6 +35,8 @@ interface Props {
   onNew: () => void;
   onOpenSettings: () => void;
   onShare: () => void;
+  /** Dùng cho panel "Ảnh & đánh giá" (gọi Node). */
+  apiBaseUrl: string;
 }
 
 function Delta({ now, prev, unit }: { now: number; prev?: number; unit: 'vnd' | 'kcal' }) {
@@ -60,11 +63,11 @@ function StopPhoto({ stop, icon }: { stop: Stop; icon: IconName }) {
       return;
     }
     setUri(null);
-    findPlacePhoto(stop.name, stop.lat, stop.lng, stop.address).then((u) => alive && setUri(u));
+    findPlacePhoto(stop.name, stop.lat, stop.lng).then((u) => alive && setUri(u));
     return () => {
       alive = false;
     };
-  }, [stop.image_url, stop.name, stop.lat, stop.lng, stop.address]);
+  }, [stop.image_url, stop.name, stop.lat, stop.lng]);
   if (uri && !failed) {
     return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" onError={() => setFailed(true)} />;
   }
@@ -97,7 +100,10 @@ export default function PlanScreen({
   onShare,
   canUndo,
   onUndo,
+  apiBaseUrl,
 }: Props) {
+  const [reviewsOpen, setReviewsOpen] = useState<Record<string, boolean>>({});
+  const toggleReviews = (id: string) => setReviewsOpen((m) => ({ ...m, [id]: !m[id] }));
   const insets = useSafeAreaInsets();
   const [weather, setWeather] = useState<TripWeather | null>(null);
   const { lat: oLat, lng: oLng } = plan.request.origin;
@@ -411,9 +417,15 @@ export default function PlanScreen({
                     </View>
                   )}
                   <View style={styles.stopActions}>
-                    <Pressable hitSlop={6} style={styles.linkBtn} onPress={() => openPlaceInGoogleMaps(s)}>
-                      <Ionicons name="images-outline" size={15} color={colors.text} />
-                      <Text style={styles.linkText}>Ảnh & đánh giá</Text>
+                    <Pressable hitSlop={6} style={styles.linkBtn} onPress={() => toggleReviews(s.stop_id)}>
+                      <Ionicons
+                        name={reviewsOpen[s.stop_id] ? 'chevron-up-outline' : 'images-outline'}
+                        size={15}
+                        color={reviewsOpen[s.stop_id] ? colors.primary : colors.text}
+                      />
+                      <Text style={[styles.linkText, reviewsOpen[s.stop_id] && { color: colors.primary }]}>
+                        {reviewsOpen[s.stop_id] ? 'Ẩn ảnh & đánh giá' : 'Ảnh & đánh giá'}
+                      </Text>
                     </Pressable>
                     <Pressable hitSlop={6} style={styles.linkBtn} onPress={() => onReplan('crowded', s.order, budget)}>
                       <Ionicons name="swap-horizontal-outline" size={15} color={colors.primary} />
@@ -421,6 +433,7 @@ export default function PlanScreen({
                     </Pressable>
                   </View>
                 </Pressable>
+                {reviewsOpen[s.stop_id] && <PlaceReviews stop={s} apiBaseUrl={apiBaseUrl} />}
                 {(!last || (!!destination && !!lastLeg)) && (
                   <View style={styles.travel}>
                     <Ionicons name="bicycle-outline" size={14} color={colors.textMuted} />

@@ -27,6 +27,7 @@ function createEmptyStore() {
     },
     itineraries: {},
     codes: {},
+    place_reviews: {},
   };
 }
 
@@ -47,6 +48,8 @@ function hydrateStore(parsed) {
     },
     itineraries: parsed.itineraries && typeof parsed.itineraries === 'object' ? parsed.itineraries : {},
     codes: parsed.codes && typeof parsed.codes === 'object' ? parsed.codes : {},
+    place_reviews:
+      parsed.place_reviews && typeof parsed.place_reviews === 'object' ? parsed.place_reviews : {},
   };
 }
 
@@ -255,6 +258,29 @@ export function createStore(storeFilePath = path.resolve(process.cwd(), 'data', 
     return record;
   }
 
+  // Community reviews written by Dayout users (real people, never generated).
+  function getPlaceReviews(placeKey) {
+    const list = Array.isArray(state.place_reviews[placeKey]) ? state.place_reviews[placeKey] : [];
+    const count = list.length;
+    const avg = count ? list.reduce((a, r) => a + (Number(r.rating) || 0), 0) / count : 0;
+    return { count, avg: Math.round(avg * 10) / 10, reviews: [...list].reverse().slice(0, 30) };
+  }
+
+  function addPlaceReview(placeKey, { name, rating, comment, place_name }) {
+    const review = {
+      id: `rv_${crypto.randomBytes(4).toString('hex')}`,
+      name: String(name || '').trim().slice(0, 40) || 'Người dùng Dayout',
+      rating: Math.min(5, Math.max(1, Math.round(Number(rating) || 0))),
+      comment: String(comment || '').trim().slice(0, 500),
+      place_name: String(place_name || '').trim().slice(0, 120),
+      created_at: new Date().toISOString(),
+    };
+    if (!Array.isArray(state.place_reviews[placeKey])) state.place_reviews[placeKey] = [];
+    state.place_reviews[placeKey].push(review);
+    persist();
+    return review;
+  }
+
   function getStatsSnapshot(baseUrl = 'http://localhost:3000') {
     const cleanBase = String(baseUrl).replace(/\/+$/, '');
     const records = Object.values(state.itineraries)
@@ -285,6 +311,7 @@ export function createStore(storeFilePath = path.resolve(process.cwd(), 'data', 
       replan_reasons: { ...state.stats.replan_reasons },
       total_share_views: state.stats.total_share_views,
       total_participants_joined: state.stats.total_participants_joined,
+      total_place_reviews: Object.values(state.place_reviews).reduce((a, l) => a + (Array.isArray(l) ? l.length : 0), 0),
       estimated_active_users:
         state.stats.total_itineraries_generated + state.stats.total_participants_joined,
       recent_itineraries: records,
@@ -300,5 +327,7 @@ export function createStore(storeFilePath = path.resolve(process.cwd(), 'data', 
     recordShareView,
     addParticipant,
     getStatsSnapshot,
+    getPlaceReviews,
+    addPlaceReview,
   };
 }

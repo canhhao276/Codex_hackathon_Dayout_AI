@@ -223,3 +223,60 @@ export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; text:
   }
   return { ok: false, text: `Server OK (${ms}ms) nhưng AI FastAPI OFFLINE → lịch trình sẽ là dự phòng, không phải AI!` };
 }
+
+// ---------- Ảnh & đánh giá địa điểm ----------
+export interface GoogleReview {
+  author: string;
+  author_photo: string | null;
+  rating: number;
+  text: string;
+  time: string;
+}
+export interface CommunityReview {
+  id: string;
+  name: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+}
+export interface PlaceReviews {
+  place_key: string;
+  google: null | {
+    place_name: string;
+    rating: number | null;
+    rating_count: number;
+    maps_url: string | null;
+    photos: { url: string; author: string }[];
+    reviews: GoogleReview[];
+  };
+  google_status: 'ok' | 'no_key' | 'not_found' | 'error';
+  community: { count: number; avg: number; reviews: CommunityReview[] };
+}
+
+export async function getPlaceReviews(
+  baseUrl: string,
+  stop: { stop_id: string; name: string; address?: string; lat: number; lng: number },
+): Promise<PlaceReviews> {
+  const qs = new URLSearchParams({
+    stop_id: stop.stop_id,
+    name: stop.name,
+    address: stop.address ?? '',
+    lat: String(stop.lat),
+    lng: String(stop.lng),
+  });
+  const { body } = await request<PlaceReviews>(baseUrl, `/api/v1/places/reviews?${qs}`, { method: 'GET' }, 12000);
+  return body;
+}
+
+export async function postPlaceReview(
+  baseUrl: string,
+  payload: { stop_id: string; place_name: string; name: string; rating: number; comment: string },
+): Promise<PlaceReviews['community']> {
+  const { body } = await request<{ community: PlaceReviews['community'] }>(
+    baseUrl,
+    '/api/v1/places/reviews',
+    { method: 'POST', body: JSON.stringify(payload) },
+    10000,
+  );
+  return body.community;
+}

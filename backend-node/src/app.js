@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { createStore } from './store.js';
+import { fetchGooglePlace } from './googlePlaces.js';
 import {
   extractShareCode,
   inferTargetStopOrder,
@@ -476,6 +477,61 @@ export function createApp(options = {}) {
       }
     }),
   );
+
+  // ---------- Ảnh & đánh giá địa điểm ----------
+  // Google (ảnh, sao, 5 bình luận thật) nếu có GOOGLE_MAPS_API_KEY + đánh giá cộng đồng Dayout (người dùng thật gửi).
+  const placeKeyOf = (src) => {
+    const id = String(src?.stop_id || '').trim();
+    if (id) return id.slice(0, 80);
+    return String(src?.place_name || src?.name || '').trim().toLowerCase().slice(0, 80);
+  };
+
+  app.get(
+    '/api/v1/places/reviews',
+    asyncHandler(async (req, res) => {
+      const q = req.query || {};
+      const placeKey = placeKeyOf({ stop_id: q.stop_id, name: q.name });
+      if (!placeKey) return res.status(400).json({ error: 'Thiếu stop_id hoặc name.' });
+      const googleKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
+      let google = null;
+      let googleStatus = googleKey ? 'ok' : 'no_key';
+      if (googleKey && q.name) {
+        try {
+          google = await fetchGooglePlace(
+            { name: String(q.name), address: String(q.address || ''), lat: q.lat, lng: q.lng },
+            googleKey,
+          );
+          if (!google) googleStatus = 'not_found';
+        } catch (err) {
+          googleStatus = 'error';
+          console.warn('[places] Google Places failed:', err?.message);
+        }
+      }
+      return res.status(200).json({
+        place_key: placeKey,
+        google,
+        google_status: googleStatus,
+        community: store.getPlaceReviews(placeKey),
+      });
+    }),
+  );
+
+  app.post('/api/v1/places/reviews', (req, res) => {
+    const b = req.body || {};
+    const placeKey = placeKeyOf(b);
+    const rating = Number(b.rating);
+    if (!placeKey) return res.status(400).json({ error: 'Thiếu stop_id hoặc place_name.' });
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Số sao phải từ 1 đến 5.' });
+    }
+    const review = store.addPlaceReview(placeKey, {
+      name: b.name,
+      rating,
+      comment: b.comment,
+      place_name: b.place_name,
+    });
+    return res.status(201).json({ review, community: store.getPlaceReviews(placeKey) });
+  });
 
   // Express JSON error handler (prevents malformed JSON or unexpected errors from crashing server)
   // eslint-disable-next-line no-unused-vars

@@ -95,12 +95,6 @@ export default function App() {
     await storage.savePlan(next);
   }, []);
 
-  // Form Màn 1 được lưu ngay khi sửa → quay lại vẫn còn, không cần bấm tạo lộ trình.
-  const saveDraft = useCallback((d: BriefDraft) => {
-    setDraft(d);
-    storage.saveBrief(d);
-  }, []);
-
   const saveApiUrl = useCallback(async (url: string) => {
     setApiBaseUrl(url);
     setSettingsOpen(false);
@@ -266,6 +260,7 @@ export default function App() {
       <StatusBar style="dark" />
       {screen === 'plan' && plan ? (
         <PlanScreen
+          apiBaseUrl={apiBaseUrl}
           plan={plan}
           restored={restored}
           changedStopIds={changedStopIds}
@@ -285,7 +280,6 @@ export default function App() {
           onBackToPlan={() => setScreen('plan')}
           onOpenSettings={() => setSettingsOpen(true)}
           onGenerate={handleGenerate}
-          onDraftChange={saveDraft}
         />
       )}
       <SettingsModal
