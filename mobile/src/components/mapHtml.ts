@@ -35,12 +35,12 @@ export const MAP_HTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: #e8eef5; }
-  .pin { width: 34px; height: 34px; border-radius: 17px; background: #4F46E5; color: #fff;
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: #EFE9DE; }
+  .pin { width: 34px; height: 34px; border-radius: 17px; background: #E2552C; color: #fff;
          font: 700 15px/34px -apple-system, Roboto, sans-serif; text-align: center;
          border: 3px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,.35); box-sizing: border-box; }
-  .pin.outdoor { background: #F97316; }
-  .pin.active { transform: scale(1.25); background: #DC2626; }
+  .pin.outdoor { background: #A86A12; }
+  .pin.active { transform: scale(1.25); background: #1D1B18; }
   .origin { width: 18px; height: 18px; border-radius: 9px; background: #0284C7;
             border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(2,132,199,.25); box-sizing: border-box; }
   .leaflet-popup-content { font: 13px -apple-system, Roboto, sans-serif; margin: 10px 12px; }
@@ -130,7 +130,7 @@ export const MAP_HTML = `<!DOCTYPE html>
     }
     if (line.length >= 2) {
       L.polyline(line, { color: '#ffffff', weight: 9, opacity: 0.9 }).addTo(layer);
-      L.polyline(line, { color: '#4F46E5', weight: 5, opacity: 0.95 }).addTo(layer);
+      L.polyline(line, { color: '#E2552C', weight: 5, opacity: 0.95 }).addTo(layer);
       line.forEach(function (pt) { pts.push(pt); });
     }
     p.stops.forEach(function (s) {

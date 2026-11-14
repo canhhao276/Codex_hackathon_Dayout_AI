@@ -62,7 +62,7 @@ export default function SettingsModal({ visible, apiBaseUrl, onClose, onSave }: 
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>⚙️ Cài đặt kết nối server</Text>
+          <Text style={styles.title}>Kết nối máy chủ</Text>
           <Text style={styles.label}>API Base URL (Node.js BFF :3000 hoặc link Cloudflare Tunnel)</Text>
           <TextInput
             value={value}
@@ -85,7 +85,7 @@ export default function SettingsModal({ visible, apiBaseUrl, onClose, onSave }: 
 
           {status && (
             <Text style={[styles.status, { color: status.ok ? colors.success : colors.danger }]}>
-              {status.ok ? '✅ ' : '❌ '}
+              {status.ok ? '● ' : '● '}
               {status.text}
             </Text>
           )}

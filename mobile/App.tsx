@@ -4,9 +4,10 @@ import { ActivityIndicator, Alert, BackHandler, Share, StyleSheet, Text, View } 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { generateItinerary, replanItinerary } from './src/api';
 import LoadingOverlay from './src/components/LoadingOverlay';
+import { LogoMark } from './src/components/Logo';
 import SettingsModal from './src/components/SettingsModal';
 import { DEFAULT_API_BASE_URL } from './src/constants';
-import { formatVndShort } from './src/format';
+import { formatVndShort, prettyNutrition } from './src/format';
 import { buildSampleItinerary, sampleReplan } from './src/sampleData';
 import BriefScreen, { DEFAULT_DRAFT } from './src/screens/BriefScreen';
 import PlanScreen from './src/screens/PlanScreen';
@@ -38,10 +39,10 @@ const REPLAN_STEPS: Record<ReplanReason, string[]> = {
 };
 
 const REPLAN_TITLES: Record<ReplanReason, string> = {
-  rainy_weather: '🌧️ AI đổi sang điểm trong nhà',
-  crowded: '🔄 AI đang đổi quán',
-  tighter_budget: '💸 AI tối ưu ngân sách',
-  lower_calories: '🥗 AI giảm calo',
+  rainy_weather: 'Đang tìm điểm trong nhà gần đó',
+  crowded: 'Đang tìm chỗ thay thế',
+  tighter_budget: 'Đang tìm lựa chọn rẻ hơn',
+  lower_calories: 'Đang tìm món nhẹ hơn',
 };
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
   const [restored, setRestored] = useState(false);
   const [changedStopIds, setChangedStopIds] = useState<string[]>([]);
   const [prevSummary, setPrevSummary] = useState<ItinerarySummary | null>(null);
+  const [undoPlan, setUndoPlan] = useState<SavedPlan | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState<{ title: string; steps: string[] } | null>(null);
   const busy = useRef(false);
@@ -104,6 +106,7 @@ export default function App() {
       const itin = buildSampleItinerary(req);
       await commitPlan({ itinerary: itin, request: req, saved_at: new Date().toISOString(), is_sample: true });
       setChangedStopIds([]);
+      setUndoPlan(null);
       setPrevSummary(null);
       setRestored(false);
       setScreen('plan');
@@ -117,7 +120,7 @@ export default function App() {
       busy.current = true;
       setDraft(nextDraft);
       storage.saveBrief(nextDraft);
-      setLoading({ title: '✨ AI đang lên lộ trình', steps: GENERATE_STEPS });
+      setLoading({ title: 'Đang lên lộ trình cho bạn', steps: GENERATE_STEPS });
       try {
         const { itinerary: itin, aiSource } = await generateItinerary(apiBaseUrl, req);
         await commitPlan({
@@ -128,6 +131,7 @@ export default function App() {
           ai_source: aiSource,
         });
         setChangedStopIds([]);
+        setUndoPlan(null);
         setPrevSummary(null);
         setRestored(false);
         setScreen('plan');
@@ -174,6 +178,7 @@ export default function App() {
         }
         const oldIds = new Set(old.stops.map((s) => s.stop_id));
         const changed = next.stops.filter((s) => !oldIds.has(s.stop_id)).map((s) => s.stop_id);
+        setUndoPlan(plan);
         setPrevSummary(old.summary);
         setChangedStopIds(changed);
         setRestored(false);
@@ -198,16 +203,26 @@ export default function App() {
     [apiBaseUrl, commitPlan, plan],
   );
 
+  // Hoàn tác lần AI đổi chặng gần nhất (ý tưởng "AI change + undo window" của TREK).
+  const handleUndo = useCallback(async () => {
+    if (!undoPlan) return;
+    await commitPlan(undoPlan);
+    setUndoPlan(null);
+    setChangedStopIds([]);
+    setPrevSummary(null);
+  }, [commitPlan, undoPlan]);
+
   const handleShare = useCallback(async () => {
     if (!plan) return;
     const { itinerary, request } = plan;
     const s = itinerary.summary;
+    const n = request.people_count;
     const lines = [
       `🎉 Chốt kèo: ${s.title}`,
-      `🕑 ${request.time_window.start}–${request.time_window.end} • 👥 ${request.people_count} người`,
-      `💰 ~${formatVndShort(s.total_cost_per_person_vnd)}/người • 🔥 ~${Math.round(s.total_calories_kcal)} kcal${
-        s.nutrition_badge ? ` • ${s.nutrition_badge}` : ''
-      }`,
+      `🕑 ${request.time_window.start}–${request.time_window.end} • 👥 ${n} người`,
+      `💰 ~${formatVndShort(s.total_cost_per_person_vnd)}/người${
+        n > 1 ? ` (cả nhóm ~${formatVndShort(s.total_cost_per_person_vnd * n)})` : ''
+      } • 🔥 ~${Math.round(s.total_calories_kcal)} kcal${s.nutrition_badge ? ` • ${prettyNutrition(s.nutrition_badge)}` : ''}`,
       '',
       ...itinerary.stops.map(
         (st) =>
@@ -232,8 +247,9 @@ export default function App() {
   if (booting) {
     return (
       <View style={styles.boot}>
-        <Text style={styles.bootBrand}>Dayout AI</Text>
-        <ActivityIndicator color="#fff" style={{ marginTop: 16 }} />
+        <LogoMark size={72} />
+        <Text style={styles.bootBrand}>dayout</Text>
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} />
       </View>
     );
   }
@@ -251,6 +267,8 @@ export default function App() {
           onNew={() => setScreen('brief')}
           onOpenSettings={() => setSettingsOpen(true)}
           onShare={handleShare}
+          canUndo={!!undoPlan}
+          onUndo={handleUndo}
         />
       ) : (
         <BriefScreen
@@ -274,6 +292,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  boot: { flex: 1, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  bootBrand: { color: '#fff', fontSize: 34, fontWeight: '900', letterSpacing: -0.5 },
+  boot: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  bootBrand: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.8, marginTop: 14 },
 });

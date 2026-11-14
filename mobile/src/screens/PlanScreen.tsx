@@ -1,4 +1,5 @@
-import React, { useCallback, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -13,12 +14,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LeafletMap, { type LeafletMapHandle } from '../components/LeafletMap';
-import { CATEGORY_META } from '../constants';
+import { CATEGORY_META, type IconName } from '../constants';
 import { formatKm, formatVndShort, prettyNutrition } from '../format';
-import { colors, radius, shadow } from '../theme';
+import { colors, radius, shadow, type } from '../theme';
 import type { ItinerarySummary, ReplanReason, SavedPlan, Stop } from '../types';
+import { fetchTripWeather, type TripWeather } from '../weather';
 
 interface Props {
+  /** Có bản lộ trình trước lần AI đổi gần nhất → hiện thanh "Hoàn tác". */
+  canUndo?: boolean;
+  onUndo?: () => void;
   plan: SavedPlan;
   restored: boolean;
   changedStopIds: string[];
@@ -29,15 +34,26 @@ interface Props {
   onShare: () => void;
 }
 
-function Delta({ now, prev, unit, invert }: { now: number; prev?: number; unit: 'vnd' | 'kcal'; invert?: boolean }) {
+function Delta({ now, prev, unit }: { now: number; prev?: number; unit: 'vnd' | 'kcal' }) {
   if (prev == null || prev === now) return null;
   const d = now - prev;
-  const good = invert ? d > 0 : d < 0;
-  const text = unit === 'vnd' ? formatVndShort(Math.abs(d)) : `${Math.abs(Math.round(d))}`;
+  const text = unit === 'vnd' ? formatVndShort(Math.abs(d)) : `${Math.abs(Math.round(d))} kcal`;
   return (
-    <Text style={[styles.delta, { color: good ? colors.success : colors.danger }]}>
-      {d < 0 ? '▼' : '▲'} {text}
+    <Text style={[styles.delta, { color: d < 0 ? colors.success : colors.danger }]}>
+      {d < 0 ? '−' : '+'}
+      {text}
     </Text>
+  );
+}
+
+function QuickAction({ icon, label, onPress, tint }: { icon: IconName; label: string; onPress: () => void; tint: string }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.quick, pressed && { backgroundColor: colors.sunken }]}>
+      <Ionicons name={icon} size={18} color={tint} />
+      <Text style={styles.quickText} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -50,8 +66,21 @@ export default function PlanScreen({
   onNew,
   onOpenSettings,
   onShare,
+  canUndo,
+  onUndo,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const [weather, setWeather] = useState<TripWeather | null>(null);
+  const { lat: oLat, lng: oLng } = plan.request.origin;
+  const { start: wStart, end: wEnd } = plan.request.time_window;
+  useEffect(() => {
+    let alive = true;
+    setWeather(null);
+    fetchTripWeather(oLat, oLng, { start: wStart, end: wEnd }).then((w) => alive && setWeather(w));
+    return () => {
+      alive = false;
+    };
+  }, [oLat, oLng, wStart, wEnd]);
   const { height } = useWindowDimensions();
   const mapRef = useRef<LeafletMapHandle>(null);
   const scrollRef = useRef<ScrollViewInstance>(null);
@@ -62,12 +91,12 @@ export default function PlanScreen({
   const { summary, stops } = itinerary;
   const budget = summary.budget_per_person_vnd || request.budget_vnd;
   const cost = summary.total_cost_per_person_vnd;
-  const ratio = budget > 0 ? Math.min(cost / budget, 1.2) : 0;
+  const ratio = budget > 0 ? Math.min(cost / budget, 1) : 0;
   const overBudget = budget > 0 && cost > budget;
-  const mapHeight = Math.round(Math.max(200, Math.min(height * 0.3, 320)));
+  const mapHeight = Math.round(Math.max(210, Math.min(height * 0.32, 330)));
+  const badge = prettyNutrition(summary.nutrition_badge);
 
-  // Mở Google Maps (app hoặc web) — miễn phí, không cần API key. Người dùng xem được
-  // ảnh thật, đánh giá, giờ mở cửa của quán, và chỉ đường cả tuyến bằng xe máy.
+  // Mở Google Maps (app hoặc web) — miễn phí, không cần API key: ảnh thật, đánh giá, giờ mở cửa, chỉ đường.
   const openPlaceInGoogleMaps = (s: Stop) => {
     const q = encodeURIComponent(`${s.name}, ${s.address || `${s.lat},${s.lng}`}`);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`).catch(() => undefined);
@@ -85,11 +114,10 @@ export default function PlanScreen({
     Linking.openURL(url).catch(() => undefined);
   };
 
-  const onCardPress = (s: Stop) => {
+  const onStopPress = (s: Stop) => {
     setActiveOrder(s.order);
     mapRef.current?.focusStop(s.order);
   };
-
   const onMarkerPress = useCallback((order: number) => {
     setActiveOrder(order);
     const y = cardY.current[order];
@@ -102,9 +130,9 @@ export default function PlanScreen({
       onReplan('rainy_weather', outdoor.order, budget);
       return;
     }
-    Alert.alert('☔ Lộ trình đã an toàn khi mưa', 'Tất cả các chặng hiện đều trong nhà. Vẫn muốn AI đổi một chặng?', [
+    Alert.alert('Lộ trình đã an toàn khi mưa', 'Mọi điểm đều trong nhà. Vẫn muốn đổi điểm đầu tiên?', [
       { text: 'Thôi', style: 'cancel' },
-      { text: 'Đổi chặng 1', onPress: () => onReplan('rainy_weather', stops[0].order, budget) },
+      { text: 'Đổi điểm 1', onPress: () => onReplan('rainy_weather', stops[0].order, budget) },
     ]);
   };
   const cheaper = () => {
@@ -118,222 +146,244 @@ export default function PlanScreen({
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <View style={{ flex: 1 }}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={onNew} hitSlop={8} style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}>
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <View style={{ flex: 1, marginHorizontal: 10 }}>
           <Text style={styles.title} numberOfLines={1}>
             {summary.title}
           </Text>
           <Text style={styles.sub} numberOfLines={1}>
-            {restored ? '💾 Đã khôi phục • ' : ''}
-            {request.people_count} người • {request.time_window.start}–{request.time_window.end}
+            {request.time_window.start}–{request.time_window.end} · {request.people_count} người
+            {restored ? ' · đã khôi phục' : ''}
           </Text>
         </View>
-        <Pressable style={styles.iconBtn} onPress={onOpenSettings}>
-          <Text style={styles.iconText}>⚙️</Text>
-        </Pressable>
-        <Pressable style={[styles.newBtn]} onPress={onNew}>
-          <Text style={styles.newText}>＋ Tạo mới</Text>
+        <Pressable onPress={onOpenSettings} hitSlop={8} style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}>
+          <Ionicons name="settings-outline" size={20} color={colors.text} />
         </Pressable>
       </View>
 
       {is_sample && (
-        <View style={styles.sampleBanner}>
-          <Text style={styles.sampleText}>
-            ⚠️ DỮ LIỆU MẪU (server chưa kết nối) — bấm ⚙️ để nhập API URL rồi Tạo mới.
-          </Text>
+        <View style={[styles.banner, { backgroundColor: colors.amberSoft }]}>
+          <Ionicons name="cloud-offline-outline" size={16} color={colors.amber} />
+          <Text style={[styles.bannerText, { color: colors.amber }]}>Dữ liệu mẫu — chưa kết nối máy chủ. Mở cài đặt để nhập địa chỉ.</Text>
         </View>
       )}
       {!is_sample && plan.ai_source === 'fallback' && (
-        <View style={[styles.sampleBanner, { backgroundColor: colors.dangerSoft }]}>
-          <Text style={[styles.sampleText, { color: colors.danger }]}>
-            ⚠️ AI (FastAPI) đang offline — lịch trình này do planner dự phòng tạo. Bật lại AI rồi Tạo mới.
-          </Text>
+        <View style={[styles.banner, { backgroundColor: colors.dangerSoft }]}>
+          <Ionicons name="warning-outline" size={16} color={colors.danger} />
+          <Text style={[styles.bannerText, { color: colors.danger }]}>AI đang offline — lộ trình này do thuật toán dự phòng tạo.</Text>
         </View>
       )}
 
       {/* Map */}
       <View style={{ height: mapHeight }}>
-        <LeafletMap
-          ref={mapRef}
-          itinerary={itinerary}
-          origin={request.origin}
-          onStopPress={onMarkerPress}
-        />
-        <Pressable style={styles.fitBtn} onPress={() => mapRef.current?.fitAll()}>
-          <Text style={styles.fitText}>⤢ Toàn tuyến</Text>
-        </Pressable>
-        <Pressable style={styles.gmapsBtn} onPress={openRouteInGoogleMaps}>
-          <Text style={styles.fitText}>🧭 Chỉ đường Google Maps</Text>
-        </Pressable>
+        <LeafletMap ref={mapRef} itinerary={itinerary} origin={request.origin} onStopPress={onMarkerPress} />
+        <View style={styles.mapActions}>
+          <Pressable style={styles.mapBtn} onPress={() => mapRef.current?.fitAll()}>
+            <Ionicons name="scan-outline" size={16} color={colors.text} />
+            <Text style={styles.mapBtnText}>Toàn tuyến</Text>
+          </Pressable>
+          <Pressable style={styles.mapBtn} onPress={openRouteInGoogleMaps}>
+            <Ionicons name="navigate-outline" size={16} color={colors.text} />
+            <Text style={styles.mapBtnText}>Chỉ đường</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* HUD */}
-      <View style={styles.hud}>
-        <View style={styles.hudTop}>
-          <View style={styles.hudCol}>
-            <Text style={styles.hudLabel} numberOfLines={1}>💰 Mỗi người</Text>
-            <View style={styles.hudRow}>
-              <Text style={[styles.hudValue, overBudget && { color: colors.danger }]}>
-                {formatVndShort(cost)}
-              </Text>
-              <Text style={styles.hudOf}>/{formatVndShort(budget)}</Text>
-            </View>
+      {/* Sheet */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.sheet}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 18, paddingBottom: 100 + insets.bottom }}
+      >
+        {/* Tổng quan */}
+        <View style={styles.stats}>
+          <View style={styles.stat}>
+            <Text style={[styles.statValue, overBudget && { color: colors.danger }]}>{formatVndShort(cost)}</Text>
+            <Text style={styles.statLabel}>/ {formatVndShort(budget)} mỗi người</Text>
             <Delta now={cost} prev={prevSummary?.total_cost_per_person_vnd} unit="vnd" />
           </View>
-          <View style={styles.hudDivider} />
-          <View style={styles.hudCol}>
-            <Text style={styles.hudLabel} numberOfLines={1}>🔥 Calo</Text>
-            <View style={styles.hudRow}>
-              <Text style={styles.hudValue}>{Math.round(summary.total_calories_kcal)}</Text>
-              <Text style={styles.hudOf}> kcal</Text>
-            </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{Math.round(summary.total_calories_kcal)}</Text>
+            <Text style={styles.statLabel}>kcal cả buổi</Text>
             <Delta now={summary.total_calories_kcal} prev={prevSummary?.total_calories_kcal} unit="kcal" />
           </View>
-          <View style={styles.hudDivider} />
-          <View style={styles.hudCol}>
-            <Text style={styles.hudLabel} numberOfLines={1}>🛵 Di chuyển</Text>
-            <View style={styles.hudRow}>
-              <Text style={styles.hudValue}>{formatKm(summary.total_distance_km).replace(' km', '')}</Text>
-              <Text style={styles.hudOf}> km</Text>
-            </View>
-            <Text style={styles.hudMini}>~{Math.round(summary.total_travel_minutes)} phút</Text>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{formatKm(summary.total_distance_km).replace(' km', '')}</Text>
+            <Text style={styles.statLabel}>km · {Math.round(summary.total_travel_minutes)} phút</Text>
           </View>
         </View>
         <View style={styles.bar}>
-          <View
-            style={[
-              styles.barFill,
-              {
-                width: `${Math.min(ratio, 1) * 100}%`,
-                backgroundColor: overBudget ? colors.danger : colors.success,
-              },
-            ]}
-          />
+          <View style={[styles.barFill, { width: `${ratio * 100}%`, backgroundColor: overBudget ? colors.danger : colors.primary }]} />
         </View>
-        {!!prettyNutrition(summary.nutrition_badge) && (
-          <Text style={styles.badge} numberOfLines={1}>
-            ✅ {prettyNutrition(summary.nutrition_badge)}
+        {!!badge && (
+          <View style={styles.badgeRow}>
+            <Ionicons name="leaf" size={14} color={colors.success} />
+            <Text style={styles.badgeText} numberOfLines={2}>
+              {badge}
+            </Text>
+          </View>
+        )}
+
+        {request.people_count > 1 && (
+          <Text style={styles.groupTotal}>
+            Cả nhóm {request.people_count} người ≈ {formatVndShort(cost * request.people_count)}
           </Text>
         )}
-      </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 96 + insets.bottom }}
-      >
-        {/* Quick AI replan */}
-        <Text style={styles.sectionTitle}>⚡ AI thích ứng thời gian thực</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
-          <Pressable style={[styles.quick, { backgroundColor: colors.infoSoft }]} onPress={rain}>
-            <Text style={[styles.quickText, { color: colors.info }]}>🌧️ Trời mưa (Đổi điểm trong nhà)</Text>
-          </Pressable>
-          <Pressable style={[styles.quick, { backgroundColor: colors.accentSoft }]} onPress={cheaper}>
-            <Text style={[styles.quickText, { color: colors.accent }]}>💸 Tiết kiệm ngân sách (−20%)</Text>
-          </Pressable>
-          <Pressable style={[styles.quick, { backgroundColor: colors.successSoft }]} onPress={lighter}>
-            <Text style={[styles.quickText, { color: colors.success }]}>🥗 Nhẹ calo hơn</Text>
-          </Pressable>
-        </ScrollView>
+        {/* Thời tiết thật trong khung giờ đi (Open-Meteo) */}
+        {weather && (
+          <View style={[styles.weather, weather.maxRainChance >= 50 && styles.weatherRain]}>
+            <Ionicons
+              name={weather.maxRainChance >= 50 ? 'rainy' : weather.maxRainChance >= 25 ? 'partly-sunny-outline' : 'sunny-outline'}
+              size={22}
+              color={weather.maxRainChance >= 50 ? colors.info : colors.amber}
+            />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.weatherTitle}>
+                {weather.tempMin === weather.tempMax ? `${weather.tempMax}°C` : `${weather.tempMin}–${weather.tempMax}°C`} ·
+                {' '}khả năng mưa {weather.maxRainChance}%
+              </Text>
+              <Text style={styles.weatherSub}>
+                {weather.maxRainChance >= 50
+                  ? `Dự báo có mưa từ ${weather.rainyHour ?? wStart}${stops.some((s) => !s.indoor) ? ' — nên đổi điểm ngoài trời' : ' — lộ trình đã ở trong nhà'}`
+                  : `Dự báo cho ${wStart}–${wEnd}, khá thuận lợi để đi`}
+              </Text>
+            </View>
+            {weather.maxRainChance >= 50 && stops.some((s) => !s.indoor) && (
+              <Pressable style={styles.weatherBtn} onPress={rain}>
+                <Text style={styles.weatherBtnText}>Đổi</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
-        <Text style={styles.sectionTitle}>🗓️ Lộ trình {stops.length} chặng</Text>
+        {/* Đổi nhanh */}
+        <Text style={[styles.overline, { marginTop: 22 }]}>CÓ GÌ THAY ĐỔI?</Text>
+        <View style={styles.quickRow}>
+          <QuickAction icon="rainy-outline" label="Trời mưa" onPress={rain} tint={colors.info} />
+          <QuickAction icon="trending-down-outline" label="Rẻ hơn 20%" onPress={cheaper} tint={colors.primary} />
+          <QuickAction icon="leaf-outline" label="Ít calo hơn" onPress={lighter} tint={colors.success} />
+        </View>
+
+        {/* Timeline */}
+        <Text style={[styles.overline, { marginTop: 24, marginBottom: 12 }]}>LỘ TRÌNH · {stops.length} ĐIỂM</Text>
         {stops.map((s, i) => {
-          const meta = CATEGORY_META[s.category] ?? { label: s.category, emoji: '📍' };
+          const meta = CATEGORY_META[s.category] ?? { label: s.category, icon: 'location-outline' as IconName };
           const isNew = changedStopIds.includes(s.stop_id);
           const active = activeOrder === s.order;
+          const last = i === stops.length - 1;
+          const note = prettyNutrition(s.nutrition_note);
           return (
             <View
               key={`${s.stop_id}_${s.order}`}
+              style={styles.tlRow}
               onLayout={(e) => {
                 cardY.current[s.order] = e.nativeEvent.layout.y;
               }}
             >
-              <Pressable
-                onPress={() => onCardPress(s)}
-                style={[styles.card, active && styles.cardActive, isNew && styles.cardNew]}
-              >
-                <View style={styles.cardHead}>
-                  <View style={[styles.num, !s.indoor && { backgroundColor: colors.accent }]}>
-                    <Text style={styles.numText}>{s.order}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.time}>
-                      {s.start_time}
-                      {s.end_time ? ` – ${s.end_time}` : ''} • {meta.emoji} {meta.label} •{' '}
-                      {s.indoor ? 'Trong nhà' : 'Ngoài trời'}
+              <View style={styles.tlTime}>
+                <Text style={styles.tlStart}>{s.start_time}</Text>
+                {!!s.end_time && <Text style={styles.tlEnd}>{s.end_time}</Text>}
+              </View>
+              <View style={styles.tlRail}>
+                <View style={[styles.tlDot, !s.indoor && styles.tlDotOutdoor, active && styles.tlDotActive]}>
+                  <Text style={styles.tlDotText}>{s.order}</Text>
+                </View>
+                {!last && <View style={styles.tlLine} />}
+              </View>
+              <View style={{ flex: 1, paddingBottom: last ? 0 : 18 }}>
+                <Pressable
+                  onPress={() => onStopPress(s)}
+                  style={[styles.stop, active && styles.stopActive, isNew && styles.stopNew]}
+                >
+                  <View style={styles.stopMeta}>
+                    <Ionicons name={meta.icon} size={13} color={colors.textMuted} />
+                    <Text style={styles.stopMetaText}>
+                      {meta.label} · {s.indoor ? 'Trong nhà' : 'Ngoài trời'}
                     </Text>
-                    <Text style={styles.name} numberOfLines={2}>
-                      {s.name}
-                    </Text>
+                    {isNew && (
+                      <View style={styles.newTag}>
+                        <Text style={styles.newTagText}>Vừa đổi</Text>
+                      </View>
+                    )}
                   </View>
-                  {isNew && (
-                    <View style={styles.newTag}>
-                      <Text style={styles.newTagText}>AI MỚI ĐỔI</Text>
+                  <Text style={styles.stopName}>{s.name}</Text>
+                  {!!s.address && (
+                    <Text style={styles.stopAddr} numberOfLines={2}>
+                      {s.address}
+                    </Text>
+                  )}
+                  {!!s.image_url && <Image source={{ uri: s.image_url }} style={styles.photo} resizeMode="cover" />}
+                  {s.recommended_items.length > 0 && (
+                    <Text style={styles.stopItems}>
+                      <Text style={styles.stopItemsLabel}>Gợi ý  </Text>
+                      {s.recommended_items.join(' · ')}
+                    </Text>
+                  )}
+                  <View style={styles.stopFacts}>
+                    <Text style={styles.fact}>{s.estimated_cost_vnd ? formatVndShort(s.estimated_cost_vnd) : 'Miễn phí'}</Text>
+                    <Text style={styles.factDot}>·</Text>
+                    <Text style={styles.fact}>{Math.round(s.estimated_calories_kcal)} kcal</Text>
+                    {!!note && (
+                      <>
+                        <Text style={styles.factDot}>·</Text>
+                        <Text style={[styles.fact, { color: colors.success, flexShrink: 1 }]} numberOfLines={1}>
+                          {note}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                  {!!s.ai_reason && (
+                    <View style={styles.reason}>
+                      <Ionicons name="sparkles-outline" size={13} color={colors.primary} style={{ marginTop: 2 }} />
+                      <Text style={styles.reasonText}>{s.ai_reason}</Text>
                     </View>
                   )}
-                </View>
-                {!!s.image_url && (
-                  <Image source={{ uri: s.image_url }} style={styles.photo} resizeMode="cover" />
-                )}
-                {!!s.address && (
-                  <Text style={styles.address} numberOfLines={2}>
-                    📍 {s.address}
-                  </Text>
-                )}
-                {s.recommended_items.length > 0 && (
-                  <View style={styles.items}>
-                    {s.recommended_items.map((it) => (
-                      <View key={it} style={styles.item}>
-                        <Text style={styles.itemText}>{it}</Text>
-                      </View>
-                    ))}
+                  <View style={styles.stopActions}>
+                    <Pressable hitSlop={6} style={styles.linkBtn} onPress={() => openPlaceInGoogleMaps(s)}>
+                      <Ionicons name="images-outline" size={15} color={colors.text} />
+                      <Text style={styles.linkText}>Ảnh & đánh giá</Text>
+                    </Pressable>
+                    <Pressable hitSlop={6} style={styles.linkBtn} onPress={() => onReplan('crowded', s.order, budget)}>
+                      <Ionicons name="swap-horizontal-outline" size={15} color={colors.primary} />
+                      <Text style={[styles.linkText, { color: colors.primary }]}>Đổi chỗ khác</Text>
+                    </Pressable>
                   </View>
-                )}
-                <View style={styles.metrics}>
-                  <Text style={styles.metric}>💰 {formatVndShort(s.estimated_cost_vnd)}</Text>
-                  <Text style={styles.metric}>🔥 {Math.round(s.estimated_calories_kcal)} kcal</Text>
-                  {!!prettyNutrition(s.nutrition_note) && (
-                    <Text style={[styles.metric, styles.metricNote]} numberOfLines={2}>
-                      {prettyNutrition(s.nutrition_note)}
+                </Pressable>
+                {!last && (
+                  <View style={styles.travel}>
+                    <Ionicons name="bicycle-outline" size={14} color={colors.textMuted} />
+                    <Text style={styles.travelText}>
+                      {formatKm(s.distance_to_next_km)}
+                      {s.travel_to_next_minutes != null ? ` · ${Math.round(s.travel_to_next_minutes)} phút` : ''}
                     </Text>
-                  )}
-                </View>
-                {!!s.ai_reason && (
-                  <View style={styles.reason}>
-                    <Text style={styles.reasonText}>🤖 {s.ai_reason}</Text>
                   </View>
                 )}
-                <View style={styles.cardActions}>
-                  <Pressable style={styles.gmapsCardBtn} onPress={() => openPlaceInGoogleMaps(s)} hitSlop={6}>
-                    <Text style={styles.gmapsCardText}>📷 Ảnh & đánh giá</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.swap}
-                    onPress={() => onReplan('crowded', s.order, budget)}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.swapText}>🔄 Đổi quán này</Text>
-                  </Pressable>
-                </View>
-              </Pressable>
-              {i < stops.length - 1 && (
-                <View style={styles.connector}>
-                  <View style={styles.connectorLine} />
-                  <Text style={styles.connectorText}>
-                    🛵 {formatKm(s.distance_to_next_km)}
-                    {s.travel_to_next_minutes != null ? ` • ~${Math.round(s.travel_to_next_minutes)} phút` : ''}
-                  </Text>
-                </View>
-              )}
+              </View>
             </View>
           );
         })}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: 10 + insets.bottom }]}>
-        <Pressable style={({ pressed }) => [styles.share, pressed && { opacity: 0.85 }]} onPress={onShare}>
-          <Text style={styles.shareText}>📤 Share chốt kèo nhóm</Text>
+        {canUndo && changedStopIds.length > 0 && (
+          <View style={styles.snack}>
+            <Ionicons name="checkmark-circle" size={18} color="#8FD3B0" />
+            <Text style={styles.snackText}>Đã đổi {changedStopIds.length} điểm</Text>
+            <Pressable hitSlop={8} onPress={onUndo}>
+              <Text style={styles.snackAction}>Hoàn tác</Text>
+            </Pressable>
+          </View>
+        )}
+        <Pressable style={({ pressed }) => [styles.share, pressed && { opacity: 0.9 }]} onPress={onShare}>
+          <Ionicons name="paper-plane-outline" size={19} color="#fff" />
+          <Text style={styles.shareText}>Gửi kèo cho nhóm</Text>
         </Pressable>
       </View>
     </View>
@@ -342,181 +392,169 @@ export default function PlanScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8 },
-  title: { fontSize: 17, fontWeight: '900', color: colors.text },
-  sub: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8 },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.card,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
-    ...shadow,
-  },
-  iconText: { fontSize: 16 },
-  newBtn: {
-    height: 38,
-    paddingHorizontal: 12,
-    borderRadius: 19,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  newText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  sampleBanner: { backgroundColor: '#FEF3C7', paddingHorizontal: 14, paddingVertical: 6 },
-  sampleText: { fontSize: 12, color: '#92400E', fontWeight: '600' },
-  fitBtn: {
-    position: 'absolute',
-    left: 10,
-    bottom: 28,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    ...shadow,
-  },
-  fitText: { fontSize: 12, fontWeight: '700', color: colors.text },
-  hud: {
-    flexDirection: 'column',
     backgroundColor: colors.card,
-    marginHorizontal: 12,
-    marginTop: -18,
-    borderRadius: radius.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    ...shadow,
-    elevation: 6,
-  },
-  hudTop: { flexDirection: 'row' },
-  hudCol: { flex: 1 },
-  hudDivider: { width: 1, backgroundColor: colors.border, marginHorizontal: 8 },
-  hudLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '800' },
-  hudRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', marginTop: 1 },
-  hudValue: { fontSize: 18, fontWeight: '900', color: colors.text },
-  hudOf: { fontSize: 11, color: colors.textMuted, fontWeight: '700' },
-  bar: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 8, overflow: 'hidden' },
-  barFill: { height: 4, borderRadius: 2 },
-  delta: { fontSize: 10, fontWeight: '800', marginTop: 1 },
-  badge: {
-    marginTop: 6,
-    fontSize: 11,
-    color: colors.success,
-    fontWeight: '800',
-    backgroundColor: colors.successSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  hudMini: { fontSize: 10, color: colors.textMuted, marginTop: 1, fontWeight: '700' },
-  sectionTitle: { fontSize: 14, fontWeight: '900', color: colors.text, marginTop: 14, marginBottom: 8 },
-  quick: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: radius.md, marginRight: 8 },
-  quickText: { fontSize: 13, fontWeight: '800' },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    ...shadow,
-  },
-  cardActive: { borderColor: colors.primary },
-  cardNew: { borderColor: colors.success, backgroundColor: '#F7FEF9' },
-  cardHead: { flexDirection: 'row', alignItems: 'center' },
-  num: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  numText: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  time: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
-  name: { fontSize: 16, fontWeight: '900', color: colors.text, marginTop: 1 },
-  newTag: { backgroundColor: colors.success, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, marginLeft: 6 },
-  newTagText: { color: '#fff', fontSize: 10, fontWeight: '900' },
-  address: { fontSize: 12, color: colors.textMuted, marginTop: 8 },
-  items: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
-  item: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  itemText: { fontSize: 12, color: colors.primaryDark, fontWeight: '600' },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 4 },
-  metric: { fontSize: 13, fontWeight: '800', color: colors.text, marginRight: 12 },
-  metricNote: { fontSize: 12, fontWeight: '600', color: colors.success, flexShrink: 1 },
-  reason: { backgroundColor: colors.bg, borderRadius: radius.sm, padding: 10, marginTop: 10 },
-  reasonText: { fontSize: 13, color: colors.text, lineHeight: 18 },
-  photo: { width: '100%', height: 140, borderRadius: radius.md, marginTop: 10, backgroundColor: colors.border },
-  cardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 },
-  gmapsCardBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radius.pill,
-    backgroundColor: colors.bg,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.border,
-    marginRight: 8,
   },
-  gmapsCardText: { fontSize: 13, fontWeight: '800', color: colors.text },
-  gmapsBtn: {
-    position: 'absolute',
-    right: 10,
-    bottom: 28,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  title: type.title,
+  sub: { fontSize: 13, color: colors.textMuted, marginTop: 1 },
+  banner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 },
+  bannerText: { flex: 1, fontSize: 12, fontWeight: '600', marginLeft: 8 },
+
+  mapActions: { position: 'absolute', left: 12, right: 12, bottom: 30, flexDirection: 'row', justifyContent: 'space-between' },
+  mapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    height: 34,
     borderRadius: radius.pill,
     ...shadow,
   },
-  swap: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+  mapBtnText: { fontSize: 13, fontWeight: '600', color: colors.text, marginLeft: 6 },
+
+  sheet: {
+    flex: 1,
+    marginTop: -20,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
   },
-  swapText: { fontSize: 13, fontWeight: '800', color: colors.primary },
-  connector: { flexDirection: 'row', alignItems: 'center', paddingLeft: 30, height: 40 },
-  connectorLine: {
-    position: 'absolute',
-    left: 30,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    borderStyle: 'dashed',
-    borderLeftWidth: 2,
-    borderColor: colors.primary,
-    opacity: 0.4,
+  stats: { flexDirection: 'row' },
+  stat: { flex: 1 },
+  statDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 12 },
+  statValue: { fontSize: 22, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  statLabel: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  delta: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  bar: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 14, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  badgeText: { flex: 1, marginLeft: 6, fontSize: 13, fontWeight: '600', color: colors.success },
+
+  overline: type.overline,
+  quickRow: { flexDirection: 'row', marginTop: 10, marginHorizontal: -4 },
+  quick: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    marginHorizontal: 4,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  connectorText: { marginLeft: 14, fontSize: 12, color: colors.textMuted, fontWeight: '700' },
+  quickText: { fontSize: 13, fontWeight: '600', color: colors.text, marginLeft: 6 },
+
+  tlRow: { flexDirection: 'row' },
+  tlTime: { width: 44, paddingTop: 2 },
+  tlStart: { fontSize: 14, fontWeight: '700', color: colors.text },
+  tlEnd: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+  tlRail: { width: 30, alignItems: 'center' },
+  tlDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  tlDotOutdoor: { backgroundColor: colors.amber },
+  tlDotActive: { backgroundColor: colors.ink },
+  tlDotText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  tlLine: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
+
+  stop: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginLeft: 4,
+  },
+  stopActive: { borderColor: colors.ink },
+  stopNew: { borderColor: colors.success, backgroundColor: '#FBFEFC' },
+  stopMeta: { flexDirection: 'row', alignItems: 'center' },
+  stopMetaText: { fontSize: 12, color: colors.textMuted, marginLeft: 5 },
+  newTag: { marginLeft: 8, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.successSoft },
+  newTagText: { fontSize: 11, fontWeight: '700', color: colors.success },
+  stopName: { fontSize: 17, fontWeight: '700', color: colors.text, marginTop: 4, letterSpacing: -0.2 },
+  stopAddr: { fontSize: 13, color: colors.textMuted, marginTop: 3, lineHeight: 18 },
+  photo: { width: '100%', height: 140, borderRadius: radius.md, marginTop: 10, backgroundColor: colors.sunken },
+  stopItems: { fontSize: 14, color: colors.text, marginTop: 10, lineHeight: 20 },
+  stopItemsLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  stopFacts: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  fact: { fontSize: 13, fontWeight: '600', color: colors.text },
+  factDot: { marginHorizontal: 6, color: colors.textFaint },
+  reason: {
+    flexDirection: 'row',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  reasonText: { flex: 1, marginLeft: 6, fontSize: 13, color: colors.textMuted, lineHeight: 19, fontStyle: 'italic' },
+  stopActions: { flexDirection: 'row', marginTop: 10 },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 18, paddingVertical: 4 },
+  linkText: { fontSize: 13, fontWeight: '700', color: colors.text, marginLeft: 5 },
+  travel: { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginLeft: 8 },
+  travelText: { fontSize: 12, color: colors.textMuted, marginLeft: 5 },
+
   footer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingTop: 10,
-    backgroundColor: 'rgba(245,247,251,0.96)',
-    borderTopWidth: 1,
+    backgroundColor: colors.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   share: {
-    height: 54,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow,
+    height: 54,
+    borderRadius: radius.lg,
+    backgroundColor: colors.ink,
   },
-  shareText: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  shareText: { color: '#fff', fontSize: 16, fontWeight: '700', marginLeft: 8 },
+  groupTotal: { fontSize: 12, color: colors.textMuted, marginTop: 6 },
+  weather: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    padding: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  weatherRain: { backgroundColor: colors.infoSoft, borderColor: '#C9D8F5' },
+  weatherTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  weatherSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  weatherBtn: { marginLeft: 8, paddingHorizontal: 14, height: 34, borderRadius: radius.pill, backgroundColor: colors.info, justifyContent: 'center' },
+  weatherBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  snack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2723',
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    height: 44,
+    marginBottom: 8,
+  },
+  snackText: { flex: 1, color: '#fff', fontSize: 14, marginLeft: 8 },
+  snackAction: { color: '#FFB49A', fontWeight: '800', fontSize: 14 },
 });
