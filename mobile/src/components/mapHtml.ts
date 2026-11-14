@@ -35,14 +35,14 @@ export const MAP_HTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: #EFE9DE; }
-  .pin { width: 34px; height: 34px; border-radius: 17px; background: #E2552C; color: #fff;
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: #EAF0F7; }
+  .pin { width: 34px; height: 34px; border-radius: 17px; background: #1F6FD1; color: #fff;
          font: 700 15px/34px -apple-system, Roboto, sans-serif; text-align: center;
          border: 3px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,.35); box-sizing: border-box; }
-  .pin.outdoor { background: #A86A12; }
-  .pin.active { transform: scale(1.25); background: #1D1B18; }
-  .origin { width: 18px; height: 18px; border-radius: 9px; background: #0284C7;
-            border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(2,132,199,.25); box-sizing: border-box; }
+  .pin.outdoor { background: #0F9B8E; }
+  .pin.active { transform: scale(1.25); background: #14213D; }
+  .origin { width: 18px; height: 18px; border-radius: 9px; background: #14213D;
+            border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(31,111,209,.25); box-sizing: border-box; }
   .leaflet-popup-content { font: 13px -apple-system, Roboto, sans-serif; margin: 10px 12px; }
   .leaflet-popup-content b { font-size: 14px; }
   /* Thẻ HUD bên app đè ~18px lên đáy bản đồ */
@@ -77,10 +77,17 @@ export const MAP_HTML = `<!DOCTYPE html>
     }
     map = L.map('map', { zoomControl: false, attributionControl: true }).setView([21.0012, 105.8035], 14);
     // CartoDB nay trả ảnh "API KEY REQUIRED"; OSM chặn tile trong WebView Android (đã thấy trên máy thật).
-    // Chính: Esri World Street Map (không cần key). Dự phòng: OSM.
-    var primary = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19, attribution: '&copy; Esri, OpenStreetMap'
+    // Chính: Esri Light Gray (nền xám xanh nhạt hợp tông app) + lớp nhãn tên đường; không cần key. Dự phòng: OSM.
+    var ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+    var primary = L.tileLayer(ESRI + 'World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16, maxNativeZoom: 16, attribution: '&copy; Esri, OpenStreetMap'
     });
+    map.createPane('labels');
+    map.getPane('labels').style.zIndex = 350; // trên nền (200), dưới đường đi & ghim (400+)
+    map.getPane('labels').style.pointerEvents = 'none';
+    L.tileLayer(ESRI + 'World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16, maxNativeZoom: 16, pane: 'labels'
+    }).addTo(map);
     var errors = 0, switched = false;
     primary.on('tileerror', function () {
       errors++;
@@ -130,7 +137,7 @@ export const MAP_HTML = `<!DOCTYPE html>
     }
     if (line.length >= 2) {
       L.polyline(line, { color: '#ffffff', weight: 9, opacity: 0.9 }).addTo(layer);
-      L.polyline(line, { color: '#E2552C', weight: 5, opacity: 0.95 }).addTo(layer);
+      L.polyline(line, { color: '#1F6FD1', weight: 5, opacity: 0.95 }).addTo(layer);
       line.forEach(function (pt) { pts.push(pt); });
     }
     p.stops.forEach(function (s) {

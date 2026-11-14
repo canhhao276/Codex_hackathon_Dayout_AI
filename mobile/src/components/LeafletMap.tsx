@@ -70,6 +70,6 @@ LeafletMap.displayName = 'LeafletMap';
 export default LeafletMap;
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, overflow: 'hidden', backgroundColor: '#e8eef5' },
+  wrap: { flex: 1, overflow: 'hidden', backgroundColor: '#EAF0F7' },
   web: { flex: 1, backgroundColor: 'transparent' },
 });

@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,6 +18,7 @@ import { CATEGORY_META, type IconName } from '../constants';
 import { formatKm, formatVndShort, prettyNutrition } from '../format';
 import { colors, radius, shadow, type } from '../theme';
 import type { ItinerarySummary, ReplanReason, SavedPlan, Stop } from '../types';
+import { fetchRoadPolyline, isStraightLine } from '../routing';
 import { fetchTripWeather, type TripWeather } from '../weather';
 
 interface Props {
@@ -81,6 +82,23 @@ export default function PlanScreen({
       alive = false;
     };
   }, [oLat, oLng, wStart, wEnd]);
+
+  // Backend lỡ trả đường chim bay (OSRM quá giờ) → điện thoại tự lấy đường phố thật để vẽ.
+  const [roadLine, setRoadLine] = useState<[number, number][] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setRoadLine(null);
+    if (isStraightLine(plan.itinerary)) {
+      fetchRoadPolyline(plan.itinerary, plan.request.origin).then((line) => alive && line && setRoadLine(line));
+    }
+    return () => {
+      alive = false;
+    };
+  }, [plan.itinerary, plan.request.origin]);
+  const mapItinerary = useMemo(
+    () => (roadLine ? { ...plan.itinerary, route_polyline: roadLine } : plan.itinerary),
+    [plan.itinerary, roadLine],
+  );
   const { height } = useWindowDimensions();
   const mapRef = useRef<LeafletMapHandle>(null);
   const scrollRef = useRef<ScrollViewInstance>(null);
@@ -180,7 +198,7 @@ export default function PlanScreen({
 
       {/* Map */}
       <View style={{ height: mapHeight }}>
-        <LeafletMap ref={mapRef} itinerary={itinerary} origin={request.origin} onStopPress={onMarkerPress} />
+        <LeafletMap ref={mapRef} itinerary={mapItinerary} origin={request.origin} onStopPress={onMarkerPress} />
         <View style={styles.mapActions}>
           <Pressable style={styles.mapBtn} onPress={() => mapRef.current?.fitAll()}>
             <Ionicons name="scan-outline" size={16} color={colors.text} />
@@ -333,7 +351,7 @@ export default function PlanScreen({
                     {!!note && (
                       <>
                         <Text style={styles.factDot}>·</Text>
-                        <Text style={[styles.fact, { color: colors.success, flexShrink: 1 }]} numberOfLines={1}>
+                        <Text style={[styles.fact, { color: colors.success, flexShrink: 1, flex: 1 }]} numberOfLines={1}>
                           {note}
                         </Text>
                       </>
@@ -469,7 +487,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.bg,
   },
-  tlDotOutdoor: { backgroundColor: colors.amber },
+  tlDotOutdoor: { backgroundColor: colors.outdoor },
   tlDotActive: { backgroundColor: colors.ink },
   tlDotText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   tlLine: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
@@ -483,7 +501,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   stopActive: { borderColor: colors.ink },
-  stopNew: { borderColor: colors.success, backgroundColor: '#FBFEFC' },
+  stopNew: { borderColor: colors.success, backgroundColor: '#F6FCF9' },
   stopMeta: { flexDirection: 'row', alignItems: 'center' },
   stopMetaText: { fontSize: 12, color: colors.textMuted, marginLeft: 5 },
   newTag: { marginLeft: 8, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.successSoft },
@@ -494,8 +512,8 @@ const styles = StyleSheet.create({
   stopItems: { fontSize: 14, color: colors.text, marginTop: 10, lineHeight: 20 },
   stopItemsLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   stopFacts: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  fact: { fontSize: 13, fontWeight: '600', color: colors.text },
-  factDot: { marginHorizontal: 6, color: colors.textFaint },
+  fact: { fontSize: 13, fontWeight: '600', color: colors.text, flexShrink: 0 },
+  factDot: { marginHorizontal: 6, color: colors.textFaint, flexShrink: 0 },
   reason: {
     flexDirection: 'row',
     marginTop: 10,
@@ -541,7 +559,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  weatherRain: { backgroundColor: colors.infoSoft, borderColor: '#C9D8F5' },
+  weatherRain: { backgroundColor: colors.infoSoft, borderColor: '#BFD6F5' },
   weatherTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   weatherSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   weatherBtn: { marginLeft: 8, paddingHorizontal: 14, height: 34, borderRadius: radius.pill, backgroundColor: colors.info, justifyContent: 'center' },
@@ -549,12 +567,12 @@ const styles = StyleSheet.create({
   snack: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2A2723',
+    backgroundColor: '#14213D',
     borderRadius: radius.md,
     paddingHorizontal: 14,
     height: 44,
     marginBottom: 8,
   },
   snackText: { flex: 1, color: '#fff', fontSize: 14, marginLeft: 8 },
-  snackAction: { color: '#FFB49A', fontWeight: '800', fontSize: 14 },
+  snackAction: { color: '#9CC3FF', fontWeight: '800', fontSize: 14 },
 });

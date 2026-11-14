@@ -3,22 +3,33 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { colors } from '../theme';
 
-/** Logo Dayout: ghim bản đồ có mặt trời bên trong — "một ngày đi chơi". */
-export function LogoMark({ size = 36 }: { size?: number }) {
+/** Hình học logo (toạ độ 64×64) — dùng chung cho app và script xuất icon PNG. */
+export const LOGO_PATHS = {
+  // Đường đi chấm chấm từ điểm xuất phát (dưới trái) uốn tới ghim đích (trên phải).
+  route: 'M26 45.5 C 33 44.5, 25.5 34.5, 34 33.6 S 41.5 34, 42.6 32.4',
+  // Ghim đích.
+  pin: 'M43 10.5c-5.8 0-10.5 4.5-10.5 10.1 0 7.1 8.6 13.6 9.6 14.3a1.6 1.6 0 0 0 1.8 0c1-.7 9.6-7.2 9.6-14.3 0-5.6-4.7-10.1-10.5-10.1Z',
+  pinHole: { cx: 43, cy: 20.6, r: 3.7 },
+  start: { cx: 18.5, cy: 46.5, r: 4.6 },
+};
+
+/** Logo Dayout: một lộ trình trong ngày — điểm xuất phát, đường đi, ghim đích. */
+export function LogoMark({ size = 36, rounded = true }: { size?: number; rounded?: boolean }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 64 64">
-      <Rect x="0" y="0" width="64" height="64" rx="16" fill={colors.primary} />
+      <Rect x="0" y="0" width="64" height="64" rx={rounded ? 16 : 0} fill={colors.primary} />
       <Path
-        d="M32 12c-9.4 0-17 7.4-17 16.6 0 11.8 14.2 22.6 15.9 23.8a1.9 1.9 0 0 0 2.2 0C34.8 51.2 49 40.4 49 28.6 49 19.4 41.4 12 32 12Z"
-        fill="#FFFFFF"
-      />
-      <Circle cx="32" cy="28.5" r="6.2" fill={colors.primary} />
-      <Path
-        d="M32 18.6v2.6M32 35.8v2.6M22.1 28.5h2.6M39.3 28.5h2.6M25 21.5l1.8 1.8M37.2 33.7l1.8 1.8M25 35.5l1.8-1.8M37.2 23.3l1.8-1.8"
-        stroke={colors.primary}
-        strokeWidth="2.2"
+        d={LOGO_PATHS.route}
+        stroke="#FFFFFF"
+        strokeWidth={3.4}
         strokeLinecap="round"
+        strokeDasharray="0.1 6.2"
+        fill="none"
       />
+      <Circle {...LOGO_PATHS.start} fill="#FFFFFF" />
+      <Circle cx={LOGO_PATHS.start.cx} cy={LOGO_PATHS.start.cy} r={1.9} fill={colors.primary} />
+      <Path d={LOGO_PATHS.pin} fill="#FFFFFF" />
+      <Circle {...LOGO_PATHS.pinHole} fill={colors.primary} />
     </Svg>
   );
 }
