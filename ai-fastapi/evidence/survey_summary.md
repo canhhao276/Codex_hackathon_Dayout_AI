@@ -1,4 +1,4 @@
-# Kết quả khảo sát thực tế tại hội trường (n = 8)
+# Kết quả khảo sát thực tế qua tin nhắn với sinh viên quen biết (n = 8)
 
 - **Thời gian chốt 1 lịch trình:** trung bình **31 phút**, trung vị 28 phút; **50%** mất ≥ 30 phút.
 - **Số app phải dùng:** trung bình **3.2 app**; **75%** dùng ≥ 3 app.
@@ -21,7 +21,7 @@
 
 ## Câu chốt cho pitch
 
-> Khảo sát 8 bạn trẻ ngay tại hội trường hôm nay: trung bình mất 31 phút và 3.2 app để chốt 1 buổi đi chơi; 38% nói nỗi đau lớn nhất là "cả nhóm bàn mãi không chốt được kèo".
+> Khảo sát qua tin nhắn 8 sinh viên quen biết (UET, UEB) chiều nay, kèm gửi bản dùng thử: trung bình mất 31 phút và 3.2 app để chốt 1 buổi đi chơi; 38% nói nỗi đau lớn nhất là "cả nhóm bàn mãi không chốt được kèo".
 
 
 ## Người dùng thực tế trong ngày (Tiêu chí 3)
@@ -34,3 +34,5 @@ Ghi nhận trên server Dayout thứ hai của đội (chạy ở máy một th�
 - Đã **cài APK** và tự tạo lộ trình: **2/8**
 
 > Câu chốt: "Ngay chiều nay, 5 bạn nhận link chốt kèo, 3 bạn đã bấm tham gia và 2 bạn đã cài app trên điện thoại của mình."
+
+> Phương pháp: khảo sát qua tin nhắn với 8 sinh viên quen biết của đội (UET, UEB), gửi kèm sản phẩm để dùng thử. Mẫu nhỏ và là người quen nên có thiên lệch; dùng như tín hiệu ban đầu, không đại diện thị trường.
