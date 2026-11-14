@@ -105,7 +105,6 @@ export default function PlanScreen({
           </Text>
           <Text style={styles.sub} numberOfLines={1}>
             {restored ? '💾 Đã khôi phục • ' : ''}
-            {plan.ai_source === 'fastapi' ? '🤖 AI live • ' : ''}
             {request.people_count} người • {request.time_window.start}–{request.time_window.end}
           </Text>
         </View>
