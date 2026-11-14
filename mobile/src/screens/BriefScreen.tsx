@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { parseBrief } from '../api';
 import Chip from '../components/Chip';
 import Logo from '../components/Logo';
+import PlaceSearch from '../components/PlaceSearch';
 import {
   BUDGET_MIN,
   BUDGET_PRESETS,
@@ -54,11 +55,12 @@ export const DEFAULT_DRAFT: BriefDraft = {
   extraVibes: [],
   durationMin: DURATION_DEFAULT,
   description: '',
+  destination: null,
 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-type RowKey = 'origin' | 'budget' | 'people' | 'time' | 'vibes' | 'nutrition' | 'note';
+type RowKey = 'origin' | 'destination' | 'budget' | 'people' | 'time' | 'vibes' | 'nutrition' | 'note';
 
 interface Props {
   initialDraft: BriefDraft;
@@ -80,6 +82,7 @@ export function draftToRequest(d: BriefDraft): GenerateRequest {
     prompt_note: [
       d.description.trim() ? `Mô tả của người dùng: "${d.description.trim().slice(0, 400)}"` : '',
       d.note.trim(),
+      d.destination ? `Muốn kết thúc chuyến đi gần: ${d.destination.label}` : '',
       d.extraVibes.length ? `Sở thích thêm: ${d.extraVibes.join(', ')}` : '',
       d.people > 4 ? `Nhóm đông ${d.people} người, cần chỗ rộng` : '',
     ]
@@ -402,6 +405,13 @@ export default function BriefScreen({
             <Text style={styles.bodyText} numberOfLines={2}>
               {draft.origin.label}
             </Text>
+            <PlaceSearch
+              placeholder="Nhập địa chỉ, quán, toà nhà… (VD: Times City)"
+              onPick={(h) => {
+                update({ originKey: 'custom', origin: { lat: h.lat, lng: h.lng, label: h.label } });
+                setGpsMsg(null);
+              }}
+            />
             <Pressable style={styles.gpsBtn} onPress={locateMe} disabled={locating}>
               {locating ? (
                 <ActivityIndicator size="small" color={colors.info} />
@@ -424,6 +434,42 @@ export default function BriefScreen({
                     update({ originKey: a.key, origin: a.origin });
                     setGpsMsg(null);
                   }}
+                />
+              ))}
+            </View>
+          </Row>
+
+          <Row
+            isOpen={open === 'destination'}
+            onToggle={() => toggleRow('destination')}
+            icon="flag-outline"
+            label="Kết thúc"
+            value={draft.destination ? draft.destination.label.split(',')[0] : 'Không cố định'}
+          >
+            {draft.destination && (
+              <Text style={styles.bodyText} numberOfLines={2}>
+                {draft.destination.label}
+              </Text>
+            )}
+            <PlaceSearch
+              placeholder="Muốn kết thúc ở đâu? (VD: nhà, ký túc xá…)"
+              onPick={(h) => update({ destination: { lat: h.lat, lng: h.lng, label: h.label } })}
+            />
+            <View style={styles.chips}>
+              <Chip small label="Không cố định" selected={!draft.destination} onPress={() => update({ destination: null })} />
+              <Chip
+                small
+                label="Về điểm xuất phát"
+                selected={!!draft.destination && draft.destination.lat === draft.origin.lat && draft.destination.lng === draft.origin.lng}
+                onPress={() => update({ destination: { ...draft.origin } })}
+              />
+              {QUICK_AREAS.map((a) => (
+                <Chip
+                  key={a.key}
+                  small
+                  label={a.title}
+                  selected={!!draft.destination && draft.destination.lat === a.origin.lat && draft.destination.lng === a.origin.lng}
+                  onPress={() => update({ destination: { ...a.origin } })}
                 />
               ))}
             </View>

@@ -82,4 +82,6 @@ export interface SavedPlan {
   is_sample: boolean;
   /** Header X-AI-Source của backend-node: 'fastapi' (AI thật) | 'fallback' (dự phòng, không AI). */
   ai_source?: string | null;
+  /** Điểm kết thúc người dùng chọn (không bắt buộc) — app tự vẽ chặng cuối về đây. */
+  destination?: Origin | null;
 }

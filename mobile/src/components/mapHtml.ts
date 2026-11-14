@@ -9,12 +9,15 @@ export interface LeafletMapProps {
   itinerary: ItineraryResponse;
   origin: Origin | null;
   onStopPress?: (order: number) => void;
+  /** Điểm kết thúc tuỳ chọn. */
+  destination?: Origin | null;
 }
 
 /** Dữ liệu gửi vào trang bản đồ (window.renderPlan). */
-export function buildMapPayload(itinerary: ItineraryResponse, origin: Origin | null) {
+export function buildMapPayload(itinerary: ItineraryResponse, origin: Origin | null, destination?: Origin | null) {
   return {
     origin,
+    destination: destination ?? null,
     polyline: itinerary.route_polyline,
     stops: itinerary.stops.map((s) => ({
       order: s.order,
@@ -43,6 +46,8 @@ export const MAP_HTML = `<!DOCTYPE html>
   .pin.active { transform: scale(1.25); background: #14213D; }
   .origin { width: 18px; height: 18px; border-radius: 9px; background: #14213D;
             border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(31,111,209,.25); box-sizing: border-box; }
+  .dest { width: 22px; height: 22px; border-radius: 6px; background: #14213D; border: 3px solid #fff;
+          box-shadow: 0 2px 6px rgba(0,0,0,.35); box-sizing: border-box; }
   .leaflet-popup-content { font: 13px -apple-system, Roboto, sans-serif; margin: 10px 12px; }
   .leaflet-popup-content b { font-size: 14px; }
   /* Thẻ HUD bên app đè ~18px lên đáy bản đồ */
@@ -129,6 +134,12 @@ export const MAP_HTML = `<!DOCTYPE html>
       pts.push(o);
       L.marker(o, { icon: L.divIcon({ className: '', html: '<div class="origin"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) })
         .bindPopup('<b>Điểm xuất phát</b><br/>' + esc(p.origin.label)).addTo(layer);
+    }
+    if (p.destination) {
+      var dpt = [p.destination.lat, p.destination.lng];
+      L.marker(dpt, { icon: L.divIcon({ className: '', html: '<div class="dest"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 900 })
+        .bindPopup('<b>Điểm kết thúc</b><br/>' + esc(p.destination.label)).addTo(layer);
+      pts.push(dpt);
     }
     var line = (p.polyline && p.polyline.length >= 2) ? p.polyline : null;
     if (!line) {

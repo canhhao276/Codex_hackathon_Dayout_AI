@@ -10,10 +10,10 @@ export type { LeafletMapHandle } from './mapHtml';
 const BRIDGE =
   '<script>window.ReactNativeWebView={postMessage:function(m){parent.postMessage({__dayoutMap:true,data:m},"*")}};</script>';
 
-const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({ itinerary, origin, onStopPress }, ref) => {
+const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({ itinerary, origin, onStopPress, destination }, ref) => {
   const frameRef = useRef<any>(null);
   const html = useMemo(() => MAP_HTML.replace('<script>', `${BRIDGE}<script>`), []);
-  const payload = useMemo(() => buildMapPayload(itinerary, origin), [itinerary, origin]);
+  const payload = useMemo(() => buildMapPayload(itinerary, origin, destination), [itinerary, origin, destination]);
   const payloadRef = useRef(payload);
   payloadRef.current = payload;
 

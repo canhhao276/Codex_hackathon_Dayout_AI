@@ -104,14 +104,14 @@ export default function App() {
   const showSample = useCallback(
     async (req: GenerateRequest) => {
       const itin = buildSampleItinerary(req);
-      await commitPlan({ itinerary: itin, request: req, saved_at: new Date().toISOString(), is_sample: true });
+      await commitPlan({ itinerary: itin, request: req, saved_at: new Date().toISOString(), is_sample: true, destination: draft.destination });
       setChangedStopIds([]);
       setUndoPlan(null);
       setPrevSummary(null);
       setRestored(false);
       setScreen('plan');
     },
-    [commitPlan],
+    [commitPlan, draft.destination],
   );
 
   const handleGenerate = useCallback(
@@ -128,6 +128,7 @@ export default function App() {
           request: req,
           saved_at: new Date().toISOString(),
           is_sample: false,
+          destination: nextDraft.destination ?? null,
           ai_source: aiSource,
         });
         setChangedStopIds([]);

@@ -18,7 +18,8 @@ import { CATEGORY_META, type IconName } from '../constants';
 import { formatKm, formatVndShort, prettyNutrition } from '../format';
 import { colors, radius, shadow, type } from '../theme';
 import type { ItinerarySummary, ReplanReason, SavedPlan, Stop } from '../types';
-import { fetchRoadPolyline, isStraightLine } from '../routing';
+import { findPlacePhoto } from '../places';
+import { fetchRoadRoute, isStraightLine, type RoadRoute } from '../routing';
 import { fetchTripWeather, type TripWeather } from '../weather';
 
 interface Props {
@@ -44,6 +45,33 @@ function Delta({ now, prev, unit }: { now: number; prev?: number; unit: 'vnd' | 
       {d < 0 ? '−' : '+'}
       {text}
     </Text>
+  );
+}
+
+/** Ảnh địa điểm bên phải thẻ: Wikipedia/Wikimedia nếu chắc chắn đúng nơi, không thì ảnh minh hoạ theo loại. */
+function StopPhoto({ stop, icon }: { stop: Stop; icon: IconName }) {
+  const [uri, setUri] = useState<string | null>(stop.image_url ?? null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setFailed(false);
+    if (stop.image_url) {
+      setUri(stop.image_url);
+      return;
+    }
+    setUri(null);
+    findPlacePhoto(stop.name, stop.lat, stop.lng).then((u) => alive && setUri(u));
+    return () => {
+      alive = false;
+    };
+  }, [stop.image_url, stop.name, stop.lat, stop.lng]);
+  if (uri && !failed) {
+    return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" onError={() => setFailed(true)} />;
+  }
+  return (
+    <View style={[styles.thumb, styles.thumbFallback, !stop.indoor && { backgroundColor: '#E0F4F1' }]}>
+      <Ionicons name={icon} size={26} color={stop.indoor ? colors.primary : colors.outdoor} />
+    </View>
   );
 }
 
@@ -83,22 +111,31 @@ export default function PlanScreen({
     };
   }, [oLat, oLng, wStart, wEnd]);
 
-  // Backend lỡ trả đường chim bay (OSRM quá giờ) → điện thoại tự lấy đường phố thật để vẽ.
-  const [roadLine, setRoadLine] = useState<[number, number][] | null>(null);
+  // Đường phố thật: khi backend lỡ trả đường chim bay (OSRM quá giờ), hoặc khi có điểm kết thúc
+  // (backend không biết điểm này) → điện thoại tự gọi OSRM cho cả tuyến, kể cả chặng về đích.
+  const destination = plan.destination ?? null;
+  const [road, setRoad] = useState<RoadRoute | null>(null);
   useEffect(() => {
     let alive = true;
-    setRoadLine(null);
-    if (isStraightLine(plan.itinerary)) {
-      fetchRoadPolyline(plan.itinerary, plan.request.origin).then((line) => alive && line && setRoadLine(line));
+    setRoad(null);
+    if (destination || isStraightLine(plan.itinerary)) {
+      fetchRoadRoute(plan.itinerary, plan.request.origin, destination).then((r) => {
+        if (alive && r) setRoad(r);
+      });
     }
     return () => {
       alive = false;
     };
-  }, [plan.itinerary, plan.request.origin]);
-  const mapItinerary = useMemo(
-    () => (roadLine ? { ...plan.itinerary, route_polyline: roadLine } : plan.itinerary),
-    [plan.itinerary, roadLine],
-  );
+  }, [plan.itinerary, plan.request.origin, destination]);
+  const mapItinerary = useMemo(() => {
+    if (road) return { ...plan.itinerary, route_polyline: road.line };
+    if (destination) {
+      // Chưa có đường thật: tạm nối thẳng thêm chặng về đích.
+      return { ...plan.itinerary, route_polyline: [...plan.itinerary.route_polyline, [destination.lat, destination.lng] as [number, number]] };
+    }
+    return plan.itinerary;
+  }, [plan.itinerary, road, destination]);
+  const lastLeg = destination && road?.legs.length ? road.legs[road.legs.length - 1] : null;
   const { height } = useWindowDimensions();
   const mapRef = useRef<LeafletMapHandle>(null);
   const scrollRef = useRef<ScrollViewInstance>(null);
@@ -198,7 +235,13 @@ export default function PlanScreen({
 
       {/* Map */}
       <View style={{ height: mapHeight }}>
-        <LeafletMap ref={mapRef} itinerary={mapItinerary} origin={request.origin} onStopPress={onMarkerPress} />
+        <LeafletMap
+          ref={mapRef}
+          itinerary={mapItinerary}
+          origin={request.origin}
+          destination={destination}
+          onStopPress={onMarkerPress}
+        />
         <View style={styles.mapActions}>
           <Pressable style={styles.mapBtn} onPress={() => mapRef.current?.fitAll()}>
             <Ionicons name="scan-outline" size={16} color={colors.text} />
@@ -313,31 +356,35 @@ export default function PlanScreen({
                 <View style={[styles.tlDot, !s.indoor && styles.tlDotOutdoor, active && styles.tlDotActive]}>
                   <Text style={styles.tlDotText}>{s.order}</Text>
                 </View>
-                {!last && <View style={styles.tlLine} />}
+                {(!last || !!destination) && <View style={styles.tlLine} />}
               </View>
               <View style={{ flex: 1, paddingBottom: last ? 0 : 18 }}>
                 <Pressable
                   onPress={() => onStopPress(s)}
                   style={[styles.stop, active && styles.stopActive, isNew && styles.stopNew]}
                 >
-                  <View style={styles.stopMeta}>
-                    <Ionicons name={meta.icon} size={13} color={colors.textMuted} />
-                    <Text style={styles.stopMetaText}>
-                      {meta.label} · {s.indoor ? 'Trong nhà' : 'Ngoài trời'}
-                    </Text>
-                    {isNew && (
-                      <View style={styles.newTag}>
-                        <Text style={styles.newTagText}>Vừa đổi</Text>
+                  <View style={styles.stopHead}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={styles.stopMeta}>
+                        <Ionicons name={meta.icon} size={13} color={colors.textMuted} />
+                        <Text style={styles.stopMetaText}>
+                          {meta.label} · {s.indoor ? 'Trong nhà' : 'Ngoài trời'}
+                        </Text>
+                        {isNew && (
+                          <View style={styles.newTag}>
+                            <Text style={styles.newTagText}>Vừa đổi</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
+                      <Text style={styles.stopName}>{s.name}</Text>
+                      {!!s.address && (
+                        <Text style={styles.stopAddr} numberOfLines={2}>
+                          {s.address}
+                        </Text>
+                      )}
+                    </View>
+                    <StopPhoto stop={s} icon={meta.icon} />
                   </View>
-                  <Text style={styles.stopName}>{s.name}</Text>
-                  {!!s.address && (
-                    <Text style={styles.stopAddr} numberOfLines={2}>
-                      {s.address}
-                    </Text>
-                  )}
-                  {!!s.image_url && <Image source={{ uri: s.image_url }} style={styles.photo} resizeMode="cover" />}
                   {s.recommended_items.length > 0 && (
                     <Text style={styles.stopItems}>
                       <Text style={styles.stopItemsLabel}>Gợi ý  </Text>
@@ -374,12 +421,15 @@ export default function PlanScreen({
                     </Pressable>
                   </View>
                 </Pressable>
-                {!last && (
+                {(!last || (!!destination && !!lastLeg)) && (
                   <View style={styles.travel}>
                     <Ionicons name="bicycle-outline" size={14} color={colors.textMuted} />
                     <Text style={styles.travelText}>
-                      {formatKm(s.distance_to_next_km)}
-                      {s.travel_to_next_minutes != null ? ` · ${Math.round(s.travel_to_next_minutes)} phút` : ''}
+                      {last && lastLeg
+                        ? `${formatKm(lastLeg.km)} · ${lastLeg.min} phút về đích`
+                        : `${formatKm(s.distance_to_next_km)}${
+                            s.travel_to_next_minutes != null ? ` · ${Math.round(s.travel_to_next_minutes)} phút` : ''
+                          }`}
                     </Text>
                   </View>
                 )}
@@ -387,6 +437,22 @@ export default function PlanScreen({
             </View>
           );
         })}
+        {destination && (
+          <View style={styles.tlRow}>
+            <View style={styles.tlTime} />
+            <View style={styles.tlRail}>
+              <View style={styles.endDot}>
+                <Ionicons name="flag" size={12} color="#fff" />
+              </View>
+            </View>
+            <View style={[styles.endCard, { flex: 1 }]}>
+              <Text style={styles.stopMetaText}>Kết thúc</Text>
+              <Text style={styles.endName} numberOfLines={2}>
+                {destination.label}
+              </Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: 10 + insets.bottom }]}>
@@ -502,6 +568,27 @@ const styles = StyleSheet.create({
   },
   stopActive: { borderColor: colors.ink },
   stopNew: { borderColor: colors.success, backgroundColor: '#F6FCF9' },
+  stopHead: { flexDirection: 'row', alignItems: 'flex-start' },
+  thumb: { width: 72, height: 72, borderRadius: 12, marginLeft: 12, backgroundColor: colors.sunken },
+  thumbFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
+  endDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    backgroundColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endCard: {
+    marginLeft: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+  },
+  endName: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 2 },
   stopMeta: { flexDirection: 'row', alignItems: 'center' },
   stopMetaText: { fontSize: 12, color: colors.textMuted, marginLeft: 5 },
   newTag: { marginLeft: 8, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.successSoft },

@@ -16,6 +16,8 @@ export interface BriefDraft {
   durationMin: number;
   /** Mô tả nhu cầu bằng lời (AI đã phân tích để điền form); gửi kèm prompt_note cho đủ ngữ cảnh. */
   description: string;
+  /** Điểm kết thúc tuỳ chọn (null = không cố định). */
+  destination: { lat: number; lng: number; label: string } | null;
 }
 
 async function readJson<T>(key: string): Promise<T | null> {

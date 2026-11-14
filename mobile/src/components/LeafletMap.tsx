@@ -6,11 +6,11 @@ import { buildMapPayload, MAP_HTML, type LeafletMapHandle, type LeafletMapProps 
 
 export type { LeafletMapHandle } from './mapHtml';
 
-const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({ itinerary, origin, onStopPress }, ref) => {
+const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({ itinerary, origin, onStopPress, destination }, ref) => {
   const webRef = useRef<WebView<object>>(null);
   const source = useMemo(() => ({ html: MAP_HTML, baseUrl: 'https://dayout.ai/' }), []);
 
-  const payload = useMemo(() => buildMapPayload(itinerary, origin), [itinerary, origin]);
+  const payload = useMemo(() => buildMapPayload(itinerary, origin, destination), [itinerary, origin, destination]);
   const payloadRef = useRef(payload);
   payloadRef.current = payload;
 
