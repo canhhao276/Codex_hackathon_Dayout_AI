@@ -47,7 +47,9 @@ export const NUTRITION_OPTIONS: { key: NutritionGoal; label: string; emoji: stri
   { key: 'low_sugar', label: 'Ít đường', emoji: '🍃' },
 ];
 
-export const BUDGET_PRESETS = [150000, 250000, 350000, 500000, 800000, 1200000];
+export const BUDGET_PRESETS = [150000, 250000, 350000, 500000, 1000000];
+/** Thanh hiển thị ngân sách đầy ở mức này (ngân sách vẫn nhập được tới BUDGET_MAX). */
+export const BUDGET_BAR_FULL = 1500000;
 export const BUDGET_MIN = 50000; // backend-node chặn dưới 50k
 export const BUDGET_MAX = 3000000;
 export const BUDGET_STEP = 50000;

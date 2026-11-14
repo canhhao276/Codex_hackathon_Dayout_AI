@@ -46,3 +46,6 @@ ios/
 *.apk
 *.aab
 .env*
+
+# ảnh chụp preview
+shots/

@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Chip from '../components/Chip';
 import {
+  BUDGET_BAR_FULL,
   BUDGET_MAX,
   BUDGET_MIN,
   BUDGET_PRESETS,
@@ -241,7 +242,7 @@ export default function BriefScreen({
               <View
                 style={[
                   styles.trackFill,
-                  { width: `${((draft.budget - BUDGET_MIN) / (BUDGET_MAX - BUDGET_MIN)) * 100}%` },
+                  { width: `${Math.min(1, (draft.budget - BUDGET_MIN) / (BUDGET_BAR_FULL - BUDGET_MIN)) * 100}%` },
                 ]}
               />
             </View>

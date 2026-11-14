@@ -1,5 +1,9 @@
 export function formatVndShort(v: number): string {
   if (!Number.isFinite(v)) return '—';
+  if (Math.abs(v) >= 1000000) {
+    const tr = Math.round(v / 100000) / 10;
+    return `${String(tr).replace('.', ',')}tr`;
+  }
   if (Math.abs(v) >= 1000) {
     const k = Math.round(v / 1000);
     return `${k.toLocaleString('vi-VN')}k`;
