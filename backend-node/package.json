@@ -1,0 +1,17 @@
+{
+  "name": "dayout-ai-backend-node",
+  "version": "1.0.0",
+  "description": "Dayout AI Node.js BFF API Gateway, Viral Group Share Card, and Live Traction Dashboard",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/api.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
