@@ -74,9 +74,20 @@ export function createStore(storeFilePath = path.resolve(process.cwd(), 'data', 
 
   function persist() {
     fs.mkdirSync(dir, { recursive: true });
+    const serialized = JSON.stringify(state, null, 2);
     const tmpPath = `${storeFilePath}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf8');
-    fs.renameSync(tmpPath, storeFilePath);
+    fs.writeFileSync(tmpPath, serialized, 'utf8');
+    try {
+      fs.renameSync(tmpPath, storeFilePath);
+    } catch {
+      // Fallback for Windows NTFS transient EPERM/EBUSY file locks
+      fs.writeFileSync(storeFilePath, serialized, 'utf8');
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        // Ignore cleanup failure
+      }
+    }
   }
 
   function generateShortCode() {

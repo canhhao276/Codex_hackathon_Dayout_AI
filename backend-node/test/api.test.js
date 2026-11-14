@@ -378,4 +378,145 @@ describe('Dayout AI Node.js BFF API & Views', () => {
       await srv.close();
     }
   });
+
+  it('Test 6: Global toolbar replan without target_stop_order auto-selects outdoor or priciest stop', async () => {
+    const smartStorePath = path.join(tmpDir, 'smart-replan-store.json');
+    const app = createApp({
+      aiServiceUrl: 'http://127.0.0.1:59999',
+      storePath: smartStorePath,
+      useOsrm: false,
+    });
+    const srv = await listenServer(app);
+    try {
+      const baseItinerary = {
+        itinerary_id: 'itin_custom_outdoor_1',
+        share_url: `${srv.url}/s/test1`,
+        summary: {
+          title: 'Test Smart Replan',
+          total_cost_per_person_vnd: 230000,
+          budget_per_person_vnd: 300000,
+          total_calories_kcal: 650,
+          nutrition_badge: 'Cân bằng',
+          total_distance_km: 2.5,
+          total_travel_minutes: 10,
+        },
+        route_polyline: [
+          [21.0012, 105.8035],
+          [20.9998, 105.8042],
+          [21.0148, 105.8135],
+        ],
+        stops: [
+          {
+            order: 1,
+            stop_id: 'poi_tx_cafe_04',
+            start_time: '14:00',
+            end_time: '15:30',
+            name: 'Kafa Cafe - Nguyễn Tuân',
+            category: 'cafe',
+            address: '90 Nguyễn Tuân',
+            lat: 20.9998,
+            lng: 105.8042,
+            indoor: false, // Stop 1 is OUTDOOR!
+            recommended_items: ['Bạc xỉu'],
+            estimated_cost_vnd: 45000,
+            estimated_calories_kcal: 160,
+            nutrition_note: 'Thoáng mát',
+            ai_reason: 'Vỉa hè',
+            distance_to_next_km: 1.5,
+            travel_to_next_minutes: 6,
+          },
+          {
+            order: 2,
+            stop_id: 'poi_tx_food_04',
+            start_time: '16:00',
+            end_time: '18:00',
+            name: 'Poke & Grain Bowl - Láng Hạ',
+            category: 'food',
+            address: '101 Láng Hạ',
+            lat: 21.0148,
+            lng: 105.8135,
+            indoor: true, // Stop 2 is already indoor, but expensive (135k)
+            recommended_items: ['Salmon Poke Bowl'],
+            estimated_cost_vnd: 135000,
+            estimated_calories_kcal: 490,
+            nutrition_note: 'Giàu đạm',
+            ai_reason: 'Healthy',
+            distance_to_next_km: 0,
+            travel_to_next_minutes: 0,
+          },
+        ],
+      };
+
+      // Omit target_stop_order for rainy_weather -> should automatically swap Stop 1 (outdoor) to indoor!
+      const rainRes = await fetch(`${srv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_itinerary: baseItinerary,
+          reason: 'rainy_weather',
+        }),
+      });
+      assert.equal(rainRes.status, 200);
+      const rainPlan = await rainRes.json();
+      assert.equal(rainPlan.stops[0].indoor, true);
+      assert.notEqual(rainPlan.stops[0].stop_id, 'poi_tx_cafe_04');
+      assert.equal(rainPlan.stops[1].stop_id, 'poi_tx_food_04'); // kept intact
+
+      // Omit target_stop_order for tighter_budget -> should automatically swap Stop 2 (135k priciest) to cheaper!
+      const budgetRes = await fetch(`${srv.url}/api/v1/itineraries/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_itinerary: rainPlan,
+          reason: 'tighter_budget',
+          new_budget_vnd: 200000,
+        }),
+      });
+      assert.equal(budgetRes.status, 200);
+      const budgetPlan = await budgetRes.json();
+      assert.ok(budgetPlan.stops[1].estimated_cost_vnd < 135000);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('Test 7: Malformed JSON returns 400 JSON (no server crash), CORS OPTIONS works, and unknown share code returns friendly 404', async () => {
+    const edgeStorePath = path.join(tmpDir, 'edge-store.json');
+    const app = createApp({
+      aiServiceUrl: mockFastApi.url,
+      storePath: edgeStorePath,
+      useOsrm: false,
+    });
+    const srv = await listenServer(app);
+    try {
+      // Malformed JSON
+      const badJsonRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{"budget_vnd": 350000, bad_json',
+      });
+      assert.equal(badJsonRes.status, 400);
+      const badData = await badJsonRes.json();
+      assert.equal(badData.error, 'Invalid JSON payload');
+
+      // CORS preflight OPTIONS
+      const optRes = await fetch(`${srv.url}/api/v1/itineraries/generate`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'http://localhost:8081',
+          'Access-Control-Request-Method': 'POST',
+        },
+      });
+      assert.ok(optRes.status === 204 || optRes.status === 200);
+      assert.equal(optRes.headers.get('access-control-allow-origin'), '*');
+
+      // Friendly 404 share page
+      const missingRes = await fetch(`${srv.url}/s/zzzzz`);
+      assert.equal(missingRes.status, 404);
+      const missingHtml = await missingRes.text();
+      assert.ok(missingHtml.includes('Không tìm thấy mã kèo'));
+    } finally {
+      await srv.close();
+    }
+  });
 });

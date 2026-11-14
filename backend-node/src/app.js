@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { createStore } from './store.js';
 import {
+  extractShareCode,
+  inferTargetStopOrder,
   normalizeGenerateRequest,
   normalizeItineraryResponse,
   normalizeReplanRequest,
@@ -62,6 +64,9 @@ export function createApp(options = {}) {
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true }));
 
+  const asyncHandler = (fn) => (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
+
   app.get('/', (req, res) => {
     const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
     res.json({
@@ -78,137 +83,157 @@ export function createApp(options = {}) {
     });
   });
 
-  app.get('/health', async (req, res) => {
-    const aiService = await checkAiHealth(aiServiceUrl);
-    res.json({
-      status: 'ok',
-      service: 'dayout-ai-backend-node',
-      port,
-      allow_fallback: allowFallback,
-      timestamp: new Date().toISOString(),
-      ai_service: aiService,
-    });
-  });
+  app.get(
+    '/health',
+    asyncHandler(async (req, res) => {
+      const aiService = await checkAiHealth(aiServiceUrl);
+      res.json({
+        status: 'ok',
+        service: 'dayout-ai-backend-node',
+        port,
+        allow_fallback: allowFallback,
+        timestamp: new Date().toISOString(),
+        ai_service: aiService,
+      });
+    }),
+  );
 
-  app.post('/api/v1/itineraries/generate', async (req, res) => {
-    const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
-    const normalizedReq = normalizeGenerateRequest(req.body);
+  app.post(
+    '/api/v1/itineraries/generate',
+    asyncHandler(async (req, res) => {
+      const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
+      const normalizedReq = normalizeGenerateRequest(req.body);
 
-    let rawAiResult = null;
-    let aiSource = 'fastapi';
+      let rawAiResult = null;
+      let aiSource = 'fastapi';
 
-    try {
-      rawAiResult = await callAiGenerate(aiServiceUrl, normalizedReq);
-    } catch (err) {
-      if (!allowFallback) {
-        return res.status(502).json({
-          error: 'AI service unavailable',
-          detail: err?.message || 'Upstream FastAPI error',
+      try {
+        rawAiResult = await callAiGenerate(aiServiceUrl, normalizedReq);
+      } catch (err) {
+        if (!allowFallback) {
+          return res.status(502).json({
+            error: 'AI service unavailable',
+            detail: err?.message || 'Upstream FastAPI error',
+          });
+        }
+        aiSource = 'fallback';
+        rawAiResult = await generateFallbackItinerary(normalizedReq, { useOsrm });
+      }
+
+      const shortCode = store.generateShortCode();
+      const shareUrl = `${baseUrl}/s/${shortCode}`;
+      const candidateId =
+        typeof rawAiResult?.itinerary_id === 'string' && rawAiResult.itinerary_id.trim()
+          ? rawAiResult.itinerary_id.trim()
+          : `itin_${Date.now().toString(36)}_${shortCode}`;
+
+      const normalizedResponse = normalizeItineraryResponse(rawAiResult, {
+        itineraryId: candidateId,
+        shareUrl,
+        fallbackBudgetVnd: normalizedReq.budget_vnd,
+        origin: normalizedReq.origin,
+      });
+
+      const saved = store.saveNewItinerary(normalizedResponse, {
+        shortCode,
+        ai_source: aiSource,
+      });
+
+      const finalPayload = {
+        ...saved.itinerary,
+        itinerary_id: saved.itinerary_id,
+        share_url: `${baseUrl}/s/${saved.shortCode}`,
+      };
+
+      res.setHeader('X-AI-Source', aiSource);
+      return res.status(200).json(finalPayload);
+    }),
+  );
+
+  app.post(
+    '/api/v1/itineraries/replan',
+    asyncHandler(async (req, res) => {
+      const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
+      const normalizedReplan = normalizeReplanRequest(req.body);
+      const shareCodeHint = extractShareCode(normalizedReplan.current_itinerary?.share_url);
+
+      const existingRecord =
+        store.getById(normalizedReplan.itinerary_id) ||
+        store.getById(normalizedReplan.current_itinerary?.itinerary_id) ||
+        (shareCodeHint ? store.getByCode(shareCodeHint) : null);
+
+      const currentItinerary =
+        normalizedReplan.current_itinerary || existingRecord?.itinerary || null;
+
+      if (!currentItinerary && !allowFallback) {
+        return res.status(400).json({
+          error: 'Missing current_itinerary or valid itinerary_id for replan',
         });
       }
-      aiSource = 'fallback';
-      rawAiResult = await generateFallbackItinerary(normalizedReq, { useOsrm });
-    }
 
-    const shortCode = store.generateShortCode();
-    const shareUrl = `${baseUrl}/s/${shortCode}`;
-    const candidateId =
-      typeof rawAiResult?.itinerary_id === 'string' && rawAiResult.itinerary_id.trim()
-        ? rawAiResult.itinerary_id.trim()
-        : `itin_${Date.now().toString(36)}_${shortCode}`;
+      const targetStopOrder = normalizedReplan.has_explicit_target
+        ? normalizedReplan.target_stop_order
+        : inferTargetStopOrder(currentItinerary?.stops, normalizedReplan.reason);
 
-    const normalizedResponse = normalizeItineraryResponse(rawAiResult, {
-      itineraryId: candidateId,
-      shareUrl,
-      fallbackBudgetVnd: normalizedReq.budget_vnd,
-      origin: normalizedReq.origin,
-    });
+      const replanInput = {
+        ...normalizedReplan,
+        target_stop_order: targetStopOrder,
+      };
 
-    const saved = store.saveNewItinerary(normalizedResponse, {
-      shortCode,
-      ai_source: aiSource,
-    });
+      let rawReplanResult = null;
+      let aiSource = 'fastapi';
 
-    const finalPayload = {
-      ...saved.itinerary,
-      itinerary_id: saved.itinerary_id,
-      share_url: `${baseUrl}/s/${saved.shortCode}`,
-    };
-
-    res.setHeader('X-AI-Source', aiSource);
-    return res.status(200).json(finalPayload);
-  });
-
-  app.post('/api/v1/itineraries/replan', async (req, res) => {
-    const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
-    const normalizedReplan = normalizeReplanRequest(req.body);
-
-    const existingRecord =
-      store.getById(normalizedReplan.itinerary_id) ||
-      store.getById(normalizedReplan.current_itinerary?.itinerary_id);
-
-    const currentItinerary =
-      normalizedReplan.current_itinerary || existingRecord?.itinerary || null;
-
-    if (!currentItinerary && !allowFallback) {
-      return res.status(400).json({
-        error: 'Missing current_itinerary or valid itinerary_id for replan',
-      });
-    }
-
-    let rawReplanResult = null;
-    let aiSource = 'fastapi';
-
-    try {
-      if (!currentItinerary) {
-        throw new Error('No base itinerary provided');
-      }
-      rawReplanResult = await callAiReplan(aiServiceUrl, {
-        current_itinerary: currentItinerary,
-        target_stop_order: normalizedReplan.target_stop_order,
-        reason: normalizedReplan.reason,
-        ...(normalizedReplan.new_budget_vnd !== undefined
-          ? { new_budget_vnd: normalizedReplan.new_budget_vnd }
-          : {}),
-      });
-    } catch (err) {
-      if (!allowFallback) {
-        return res.status(502).json({
-          error: 'AI replan service unavailable',
-          detail: err?.message || 'Upstream FastAPI error',
+      try {
+        if (!currentItinerary) {
+          throw new Error('No base itinerary provided');
+        }
+        rawReplanResult = await callAiReplan(aiServiceUrl, {
+          current_itinerary: currentItinerary,
+          target_stop_order: targetStopOrder,
+          reason: normalizedReplan.reason,
+          ...(normalizedReplan.new_budget_vnd !== undefined
+            ? { new_budget_vnd: normalizedReplan.new_budget_vnd }
+            : {}),
+        });
+      } catch (err) {
+        if (!allowFallback) {
+          return res.status(502).json({
+            error: 'AI replan service unavailable',
+            detail: err?.message || 'Upstream FastAPI error',
+          });
+        }
+        aiSource = 'fallback';
+        rawReplanResult = await replanFallbackItinerary(replanInput, currentItinerary, {
+          useOsrm,
         });
       }
-      aiSource = 'fallback';
-      rawReplanResult = await replanFallbackItinerary(normalizedReplan, currentItinerary, {
-        useOsrm,
+
+      const prelim = normalizeItineraryResponse(rawReplanResult, {
+        itineraryId: existingRecord?.itinerary_id || normalizedReplan.itinerary_id,
+        shareUrl: existingRecord ? `${baseUrl}/s/${existingRecord.shortCode}` : undefined,
+        fallbackBudgetVnd:
+          normalizedReplan.new_budget_vnd ||
+          currentItinerary?.summary?.budget_per_person_vnd ||
+          350000,
       });
-    }
 
-    const prelim = normalizeItineraryResponse(rawReplanResult, {
-      itineraryId: existingRecord?.itinerary_id || normalizedReplan.itinerary_id,
-      shareUrl: existingRecord ? `${baseUrl}/s/${existingRecord.shortCode}` : undefined,
-      fallbackBudgetVnd:
-        normalizedReplan.new_budget_vnd ||
-        currentItinerary?.summary?.budget_per_person_vnd ||
-        350000,
-    });
+      const updated = store.updateReplannedItinerary(
+        existingRecord?.itinerary_id || normalizedReplan.itinerary_id || shareCodeHint,
+        prelim,
+        normalizedReplan.reason,
+        { ai_source: aiSource },
+      );
 
-    const updated = store.updateReplannedItinerary(
-      existingRecord?.itinerary_id || normalizedReplan.itinerary_id,
-      prelim,
-      normalizedReplan.reason,
-      { ai_source: aiSource },
-    );
+      const finalPayload = {
+        ...updated.itinerary,
+        itinerary_id: updated.itinerary_id,
+        share_url: `${baseUrl}/s/${updated.shortCode}`,
+      };
 
-    const finalPayload = {
-      ...updated.itinerary,
-      itinerary_id: updated.itinerary_id,
-      share_url: `${baseUrl}/s/${updated.shortCode}`,
-    };
-
-    res.setHeader('X-AI-Source', aiSource);
-    return res.status(200).json(finalPayload);
-  });
+      res.setHeader('X-AI-Source', aiSource);
+      return res.status(200).json(finalPayload);
+    }),
+  );
 
   app.get('/s/:code', (req, res) => {
     const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
@@ -347,28 +372,46 @@ export function createApp(options = {}) {
     }
   });
 
-  app.get('/api/v1/stats', async (req, res) => {
-    const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
-    const snapshot = store.getStatsSnapshot(baseUrl);
-    const aiService = await checkAiHealth(aiServiceUrl);
-    return res.json({
-      ...snapshot,
-      ai_service: aiService,
-      timestamp: new Date().toISOString(),
-    });
-  });
+  app.get(
+    '/api/v1/stats',
+    asyncHandler(async (req, res) => {
+      const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
+      const snapshot = store.getStatsSnapshot(baseUrl);
+      const aiService = await checkAiHealth(aiServiceUrl);
+      return res.json({
+        ...snapshot,
+        ai_service: aiService,
+        timestamp: new Date().toISOString(),
+      });
+    }),
+  );
 
-  app.get('/admin/stats', async (req, res) => {
-    const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
-    const snapshot = store.getStatsSnapshot(baseUrl);
-    const aiHealth = await checkAiHealth(aiServiceUrl);
-    return res.status(200).type('html').send(
-      renderStatsDashboard({
-        stats: snapshot,
-        aiHealth,
-        baseUrl,
-      }),
-    );
+  app.get(
+    '/admin/stats',
+    asyncHandler(async (req, res) => {
+      const baseUrl = resolveBaseUrl(req, publicBaseUrl, port);
+      const snapshot = store.getStatsSnapshot(baseUrl);
+      const aiHealth = await checkAiHealth(aiServiceUrl);
+      return res.status(200).type('html').send(
+        renderStatsDashboard({
+          stats: snapshot,
+          aiHealth,
+          baseUrl,
+        }),
+      );
+    }),
+  );
+
+  // Express JSON error handler (prevents malformed JSON or unexpected errors from crashing server)
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+    return res.status(err?.status || 500).json({
+      error: 'Internal server error',
+      detail: err?.message || 'Unexpected error',
+    });
   });
 
   return app;

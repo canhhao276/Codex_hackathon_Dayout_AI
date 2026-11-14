@@ -80,6 +80,47 @@ export function normalizeGenerateRequest(body = {}) {
 }
 
 /**
+ * Infer best stop order to replace when Mobile triggers global toolbar replan
+ * (e.g. "Trời mưa" or "Giảm 20% ngân sách") without specifying target_stop_order.
+ */
+export function inferTargetStopOrder(stops, reason = 'rainy_weather') {
+  if (!Array.isArray(stops) || stops.length === 0) return 2;
+
+  if (reason === 'rainy_weather') {
+    const outdoor = stops.find((s) => s && s.indoor === false);
+    if (outdoor && Number.isFinite(Number(outdoor.order))) {
+      return Number(outdoor.order);
+    }
+  } else if (reason === 'tighter_budget') {
+    const priciest = [...stops].sort(
+      (a, b) => (Number(b?.estimated_cost_vnd) || 0) - (Number(a?.estimated_cost_vnd) || 0),
+    )[0];
+    if (priciest && Number.isFinite(Number(priciest.order))) {
+      return Number(priciest.order);
+    }
+  } else if (reason === 'lower_calories') {
+    const heaviest = [...stops].sort(
+      (a, b) =>
+        (Number(b?.estimated_calories_kcal) || 0) - (Number(a?.estimated_calories_kcal) || 0),
+    )[0];
+    if (heaviest && Number.isFinite(Number(heaviest.order))) {
+      return Number(heaviest.order);
+    }
+  }
+
+  return stops.length >= 2 ? Number(stops[1].order) || 2 : Number(stops[0].order) || 1;
+}
+
+/**
+ * Extract 5-char share code from a share_url if present.
+ */
+export function extractShareCode(shareUrl) {
+  if (typeof shareUrl !== 'string') return undefined;
+  const match = shareUrl.match(/\/s\/([a-z0-9_-]+)/i);
+  return match ? match[1].toLowerCase() : undefined;
+}
+
+/**
  * Normalize incoming mobile replan request to match Section 7.2 contract.
  */
 export function normalizeReplanRequest(body = {}) {
@@ -96,13 +137,18 @@ export function normalizeReplanRequest(body = {}) {
         ? current_itinerary.itinerary_id.trim()
         : undefined;
 
-  const target_stop_order = Math.max(
-    1,
-    Math.round(toFiniteNumber(src.target_stop_order, 2)),
-  );
-
   const reasonRaw = typeof src.reason === 'string' ? src.reason.trim() : 'rainy_weather';
   const reason = VALID_REASONS.has(reasonRaw) ? reasonRaw : reasonRaw || 'rainy_weather';
+
+  const hasExplicitTarget =
+    src.target_stop_order !== undefined &&
+    src.target_stop_order !== null &&
+    src.target_stop_order !== '' &&
+    Number.isFinite(Number(src.target_stop_order));
+
+  const target_stop_order = hasExplicitTarget
+    ? Math.max(1, Math.round(Number(src.target_stop_order)))
+    : inferTargetStopOrder(current_itinerary?.stops, reason);
 
   const new_budget_vnd =
     src.new_budget_vnd !== undefined && src.new_budget_vnd !== null
@@ -113,6 +159,7 @@ export function normalizeReplanRequest(body = {}) {
     itinerary_id,
     current_itinerary,
     target_stop_order,
+    has_explicit_target: hasExplicitTarget,
     reason,
     ...(new_budget_vnd !== undefined ? { new_budget_vnd } : {}),
   };
