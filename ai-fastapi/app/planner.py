@@ -498,18 +498,40 @@ def _pick_targets(reason: str, planned: list[PlannedStop], target_order: Optiona
     return [0]
 
 
-def _reason_bonus(reason: str, old: PlannedStop, p: dict, total_cost: int, budget: int) -> float:
+_GENERIC_WORDS = {"the", "cafe", "cà", "café", "bún", "phở", "công", "bảo", "nhà", "kem", "chè", "trà", "hồ", "khu", "trung", "di"}
+
+
+def _brand(name: str) -> str:
+    first = (name or "").split(" ")[0].lower()
+    return "" if first in _GENERIC_WORDS or len(first) < 4 else first
+
+
+def _reason_bonus(reason: str, old: PlannedStop, p: dict, extra_allowed: float) -> float:
     bonus = 0.0
     new_cost = p.get("estimated_cost_vnd", 0)
-    if budget and total_cost - old.cost + new_cost > budget:
+    if new_cost > old.cost + extra_allowed:
         bonus -= 4.0  # a swap must not blow the budget
     if reason == "tighter_budget":
         bonus += (old.cost - new_cost) / 40000.0
     elif reason == "lower_calories":
         bonus += (old.kcal - p.get("estimated_calories_kcal", 0)) / 80.0
     elif reason == "rainy_weather" and p.get("category") == old.category:
-        bonus += 1.0
+        bonus += 2.5  # a park becomes an indoor activity, not yet another cafe
     return bonus
+
+
+def _fits_plan(p: dict, planned: list[PlannedStop], idx: int) -> float:
+    """Penalty for repeating a brand anywhere or a category right next door."""
+    penalty = 0.0
+    brand = _brand(p.get("name", ""))
+    for j, s in enumerate(planned):
+        if j == idx:
+            continue
+        if brand and _brand(s.poi.get("name", "")) == brand:
+            penalty -= 3.0
+        if abs(j - idx) == 1 and s.category == p.get("category"):
+            penalty -= 1.5
+    return penalty
 
 
 def _allow_fn(reason: str, old: PlannedStop, slot: tuple[int, int], strict: bool) -> Callable[[dict], bool]:
@@ -584,6 +606,7 @@ async def replan(req: ReplanRequest) -> tuple[dict, str]:
 
     used = {p.poi["id"] for p in planned}
     targets = []
+    slack = max(0, ctx.budget_pp - sum(p.cost for p in planned)) / max(1, len(target_idxs))
     for idx in target_idxs:
         old = planned[idx]
         cands: list[dict] = []
@@ -596,10 +619,10 @@ async def replan(req: ReplanRequest) -> tuple[dict, str]:
                 break
         if cands:
             per_stop = ctx.budget_pp / max(1, len(planned))
-            total_cost = sum(p.cost for p in planned)
             cands.sort(
                 key=lambda p: poi_score(p, ctx, old.poi["lat"], old.poi["lng"], per_stop)
-                + _reason_bonus(reason, old, p, total_cost, ctx.budget_pp),
+                + _reason_bonus(reason, old, p, slack)
+                + _fits_plan(p, planned, idx),
                 reverse=True,
             )
             targets.append({"order": idx + 1, "idx": idx, "old": old.poi, "candidates": cands[:8]})
@@ -632,7 +655,10 @@ async def replan(req: ReplanRequest) -> tuple[dict, str]:
                 fresh = [p for p in t["candidates"] if p["id"] not in used]
                 if not fresh:
                     continue
-                planned[idx] = make_stop(ctx, fresh[0], prev, REASON_WHY[reason], duration=old.duration)
+                # re-check against stops swapped earlier in this same replan (e.g. two rainy swaps)
+                rank = {p["id"]: i for i, p in enumerate(fresh)}
+                best = max(fresh, key=lambda p: _fits_plan(p, planned, idx) - 0.3 * rank[p["id"]])
+                planned[idx] = make_stop(ctx, best, prev, REASON_WHY[reason], duration=old.duration)
             used.add(planned[idx].poi["id"])
     if engine != "noop" and sum(p.cost for p in planned) > ctx.budget_pp:
         planned = budget_repair(ctx, planned, why=REASON_WHY.get(reason) if reason == "tighter_budget" else "Vừa ngân sách hơn")

@@ -181,6 +181,7 @@ Ngân sách: {ctx.budget_pp:,} VNĐ/người. Chế độ dinh dưỡng: {GOAL_L
 {chr(10).join(blocks)}
 
 Với MỖI điểm cần thay, chọn đúng 1 địa điểm thay thế từ danh sách ứng viên CỦA ĐIỂM ĐÓ (target_order = số thứ tự điểm cần thay).
-Ưu tiên gần lộ trình, khớp lý do đổi và chế độ dinh dưỡng. ai_reason tối đa 18 từ, nhắc rõ lý do đổi (VD "Trong nhà tránh mưa, cách 600m").
+Ưu tiên gần lộ trình, khớp lý do đổi và chế độ dinh dưỡng; tổng chi phí sau khi đổi không vượt ngân sách.
+Không chọn 2 quán cùng thương hiệu (VD 2 Starbucks) và tránh 2 điểm cùng loại đứng liền nhau; nếu điểm cũ là hoạt động thì ưu tiên hoạt động thay thế. ai_reason tối đa 18 từ, nhắc rõ lý do đổi (VD "Trong nhà tránh mưa, cách 600m").
 recommended_items 1-2 món từ cột "món". nutrition_note tối đa 10 từ. nutrition_highlight tối đa 6 từ cho cả lịch trình mới."""
     return await _structured_call(SYSTEM_PLANNER, user, schema, "dayout_replan", timeout)

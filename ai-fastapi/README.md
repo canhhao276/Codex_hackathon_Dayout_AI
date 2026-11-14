@@ -65,7 +65,7 @@ Lỗi: `422` khi body sai (VD replan thiếu `current_itinerary.stops`), `503` k
 Chọn thêm vibe **"Chụp ảnh" (`photo_spot`)** để lịch trình có 1 điểm ngoài trời (công viên/hồ). Khi bấm **"Trời mưa"**, BGK sẽ thấy rõ AI thay điểm đó bằng một điểm trong nhà gần bên, vẽ lại đường đi, tính lại tiền và calo.
 
 ## Dữ liệu `data/hanoi_pois.json`
-69 địa điểm có thật, gồm 12 `cafe`, 29 `activity`, 19 `food`, 9 `dessert_chill`, tập trung quanh Thanh Xuân/Royal City, Đống Đa, Ba Đình, Cầu Giấy, Hoàn Kiếm, Hai Bà Trưng, Tây Hồ. Mỗi điểm có `lat/lng`, `address`, `indoor`, `estimated_cost_vnd` (mỗi người), `recommended_items`, `estimated_calories_kcal`, `nutrition_tags`, `vibes`, `open_time/close_time`.
+79 địa điểm có thật, gồm 20 `cafe`, 29 `activity`, 21 `food`, 9 `dessert_chill`, tập trung quanh Thanh Xuân/Royal City, Đống Đa, Ba Đình, Cầu Giấy, Hoàn Kiếm, Hai Bà Trưng, Tây Hồ. Mỗi điểm có `lat/lng`, `address`, `indoor`, `estimated_cost_vnd` (mỗi người), `recommended_items`, `estimated_calories_kcal`, `nutrition_tags`, `vibes`, `open_time/close_time`.
 Giá và kcal là **ước lượng** cho 1 người. Nên kiểm tra lại giá thực tế trước khi pitch nếu BGK hỏi.
 
 Khi origin nằm **ngoài Hà Nội**, engine gửi truy vấn Overpass song song tới 2 mirror (timeout ~2.5s) để lấy quán/công viên/bảo tàng thật quanh vị trí. Nhờ vậy hệ thống chạy được ở mọi thành phố (Bangkok, Singapore, Tokyo…), đúng luận điểm Global Scale trong pitch.
