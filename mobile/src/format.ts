@@ -17,6 +17,22 @@ export function formatKm(v: number | null | undefined): string {
   return `${v.toFixed(1)} km`;
 }
 
+const NUTRITION_WORDS: Record<string, string> = {
+  low_sugar: 'Ít đường',
+  eat_clean: 'Eat Clean',
+  high_protein: 'Giàu đạm',
+  balanced: 'Cân bằng',
+  indulgent: 'Hơi nhiều năng lượng',
+  vegetarian: 'Món chay',
+};
+
+/** Đổi mã thô (VD "low_sugar") backend lỡ trả ra thành chữ tiếng Việt; bỏ ghi chú rỗng như "-". */
+export function prettyNutrition(text: string | null | undefined): string {
+  const t = (text ?? '').trim();
+  if (!t || /^[-–—.\s]+$/.test(t)) return '';
+  return t.replace(/\b[a-z]+(?:_[a-z]+)+\b|\bbalanced\b|\bindulgent\b|\bvegetarian\b/g, (w) => NUTRITION_WORDS[w] ?? w);
+}
+
 export function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }

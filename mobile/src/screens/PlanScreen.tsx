@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LeafletMap, { type LeafletMapHandle } from '../components/LeafletMap';
 import { CATEGORY_META } from '../constants';
-import { formatKm, formatVndShort } from '../format';
+import { formatKm, formatVndShort, prettyNutrition } from '../format';
 import { colors, radius, shadow } from '../theme';
 import type { ItinerarySummary, ReplanReason, SavedPlan, Stop } from '../types';
 
@@ -172,7 +172,7 @@ export default function PlanScreen({
       <View style={styles.hud}>
         <View style={styles.hudTop}>
           <View style={styles.hudCol}>
-            <Text style={styles.hudLabel}>💰 Chi phí/người</Text>
+            <Text style={styles.hudLabel} numberOfLines={1}>💰 Mỗi người</Text>
             <View style={styles.hudRow}>
               <Text style={[styles.hudValue, overBudget && { color: colors.danger }]}>
                 {formatVndShort(cost)}
@@ -183,7 +183,7 @@ export default function PlanScreen({
           </View>
           <View style={styles.hudDivider} />
           <View style={styles.hudCol}>
-            <Text style={styles.hudLabel}>🔥 Năng lượng</Text>
+            <Text style={styles.hudLabel} numberOfLines={1}>🔥 Calo</Text>
             <View style={styles.hudRow}>
               <Text style={styles.hudValue}>{Math.round(summary.total_calories_kcal)}</Text>
               <Text style={styles.hudOf}> kcal</Text>
@@ -192,7 +192,7 @@ export default function PlanScreen({
           </View>
           <View style={styles.hudDivider} />
           <View style={styles.hudCol}>
-            <Text style={styles.hudLabel}>🛵 Di chuyển</Text>
+            <Text style={styles.hudLabel} numberOfLines={1}>🛵 Di chuyển</Text>
             <View style={styles.hudRow}>
               <Text style={styles.hudValue}>{formatKm(summary.total_distance_km).replace(' km', '')}</Text>
               <Text style={styles.hudOf}> km</Text>
@@ -211,9 +211,9 @@ export default function PlanScreen({
             ]}
           />
         </View>
-        {!!summary.nutrition_badge && (
+        {!!prettyNutrition(summary.nutrition_badge) && (
           <Text style={styles.badge} numberOfLines={1}>
-            ✅ {summary.nutrition_badge}
+            ✅ {prettyNutrition(summary.nutrition_badge)}
           </Text>
         )}
       </View>
@@ -293,9 +293,9 @@ export default function PlanScreen({
                 <View style={styles.metrics}>
                   <Text style={styles.metric}>💰 {formatVndShort(s.estimated_cost_vnd)}</Text>
                   <Text style={styles.metric}>🔥 {Math.round(s.estimated_calories_kcal)} kcal</Text>
-                  {!!s.nutrition_note && (
+                  {!!prettyNutrition(s.nutrition_note) && (
                     <Text style={[styles.metric, styles.metricNote]} numberOfLines={2}>
-                      {s.nutrition_note}
+                      {prettyNutrition(s.nutrition_note)}
                     </Text>
                   )}
                 </View>
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   },
   fitText: { fontSize: 12, fontWeight: '700', color: colors.text },
   hud: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     backgroundColor: colors.card,
     marginHorizontal: 12,
     marginTop: -18,
